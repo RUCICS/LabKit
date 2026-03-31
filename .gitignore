@@ -1,0 +1,11 @@
+.DS_Store
+*.log
+bin/
+dist/
+node_modules/
+coverage/
+tmp/
+*.sqlite
+*.db
+*.sqlite3
+artifacts/

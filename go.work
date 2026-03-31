@@ -1,0 +1,13 @@
+go 1.24
+
+use (
+	./apps/api
+	./apps/worker
+	./apps/cli
+	./packages/go/manifest
+	./packages/go/auth
+	./packages/go/db
+	./packages/go/jobs
+	./packages/go/evaluator
+	./packages/go/labkit
+)
