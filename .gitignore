@@ -9,3 +9,10 @@ tmp/
 *.db
 *.sqlite3
 artifacts/
+labkit-worker
+
+.env
+__pycache__/
+.superpowers/
+.claude/
+submission.json
