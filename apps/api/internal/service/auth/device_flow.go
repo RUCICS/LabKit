@@ -6,7 +6,6 @@ import (
 	"encoding/base32"
 	"errors"
 	"fmt"
-	"net/url"
 	"strings"
 	"time"
 
@@ -28,9 +27,10 @@ const (
 )
 
 var (
-	ErrInvalidState   = errors.New("invalid oauth state")
-	ErrInvalidCode    = errors.New("oauth code exchange failed")
-	ErrInvalidRequest = errors.New("invalid device authorization request")
+	ErrInvalidState          = errors.New("invalid oauth state")
+	ErrInvalidCode           = errors.New("oauth code exchange failed")
+	ErrInvalidRequest        = errors.New("invalid device authorization request")
+	ErrProviderNotConfigured = errors.New("auth provider not configured")
 )
 
 // Repository defines the DB operations needed by the device authorization flow.
@@ -43,20 +43,9 @@ type Repository interface {
 	GetUserKeyByPublicKey(context.Context, string) (sqlc.UserKeys, error)
 }
 
-// OAuthClient exchanges codes and fetches the identity profile.
-type OAuthClient interface {
-	ExchangeCode(context.Context, string) (string, error)
-	FetchProfile(context.Context, string) (OAuthProfile, error)
-}
-
-// OAuthProfile is the minimal user profile required by the callback flow.
-type OAuthProfile struct {
-	LoginName string
-}
-
 type Service struct {
 	repo          Repository
-	oauth         OAuthClient
+	provider      Provider
 	cfg           config.OAuthConfig
 	now           func() time.Time
 	newDeviceCode func() (string, error)
@@ -105,10 +94,16 @@ type DevBindDeviceAuthRequestResult struct {
 	Status     string `json:"status"`
 }
 
-func NewService(repo Repository, oauth OAuthClient, cfg config.OAuthConfig) *Service {
+// NewService is a compatibility wrapper that builds a service without a provider.
+func NewService(repo Repository, _ OAuthClient, cfg config.OAuthConfig) *Service {
+	return NewServiceWithProvider(repo, nil, cfg)
+}
+
+// NewServiceWithProvider builds the auth service with an explicit provider.
+func NewServiceWithProvider(repo Repository, provider Provider, cfg config.OAuthConfig) *Service {
 	return &Service{
 		repo:          repo,
-		oauth:         oauth,
+		provider:      provider,
 		cfg:           cfg,
 		now:           time.Now,
 		newDeviceCode: func() (string, error) { return randomToken(24) },
@@ -216,28 +211,18 @@ func (s *Service) BeginDeviceVerification(ctx context.Context, userCode string) 
 	if request.ExpiresAt.Valid && s.nowUTC().After(request.ExpiresAt.Time) {
 		return "", ErrInvalidRequest
 	}
-	authorizeURL := strings.TrimSpace(s.cfg.AuthorizeURL)
-	if authorizeURL == "" {
-		return "", fmt.Errorf("oauth authorize url is required")
+	if !request.OauthState.Valid || strings.TrimSpace(request.OauthState.String) == "" {
+		return "", ErrInvalidState
 	}
-	redirectURL := strings.TrimSpace(s.cfg.RedirectURL)
-	if redirectURL == "" {
-		redirectURL = defaultVerificationURL
+	if s.provider == nil {
+		return "", ErrProviderNotConfigured
 	}
-	parsed, err := url.Parse(authorizeURL)
+	state := request.OauthState.String
+	authorizeURL, err := s.provider.BuildAuthorizeURL(state)
 	if err != nil {
 		return "", err
 	}
-	params := parsed.Query()
-	params.Set("response_type", "code")
-	params.Set("scope", "all")
-	params.Set("redirect_uri", redirectURL)
-	params.Set("state", request.OauthState.String)
-	if clientID := strings.TrimSpace(s.cfg.ClientID); clientID != "" {
-		params.Set("client_id", clientID)
-	}
-	parsed.RawQuery = params.Encode()
-	return parsed.String(), nil
+	return authorizeURL, nil
 }
 
 func (s *Service) DevBindDeviceAuthorizationRequest(ctx context.Context, in DevBindDeviceAuthRequestInput) (DevBindDeviceAuthRequestResult, error) {
@@ -316,15 +301,18 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, state, code string) (
 	if request.ExpiresAt.Valid && s.nowUTC().After(request.ExpiresAt.Time) {
 		return OAuthCallbackResult{}, ErrInvalidState
 	}
-	accessToken, err := s.oauth.ExchangeCode(ctx, code)
+	if s.provider == nil {
+		return OAuthCallbackResult{}, ErrProviderNotConfigured
+	}
+	tokenSet, err := s.provider.ExchangeCode(ctx, code)
 	if err != nil {
 		return OAuthCallbackResult{}, fmt.Errorf("%w: %v", ErrInvalidCode, err)
 	}
-	profile, err := s.oauth.FetchProfile(ctx, accessToken)
+	identity, err := s.provider.FetchIdentity(ctx, tokenSet)
 	if err != nil {
 		return OAuthCallbackResult{}, err
 	}
-	studentID := strings.TrimSpace(profile.LoginName)
+	studentID := strings.TrimSpace(identity.StudentID)
 	if studentID == "" {
 		return OAuthCallbackResult{}, ErrInvalidCode
 	}

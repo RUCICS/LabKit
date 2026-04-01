@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"labkit.local/apps/api/internal/config"
+	"labkit.local/apps/api/internal/service/auth/providers"
 )
 
 func TestOAuthHTTPClientExchangeCode(t *testing.T) {
@@ -25,7 +26,7 @@ func TestOAuthHTTPClientExchangeCode(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewOAuthHTTPClient(config.OAuthConfig{
+	client := NewOAuthHTTPClient(config.CASRUCConfig{
 		ClientID:     "client-id",
 		ClientSecret: "client-secret",
 		RedirectURL:  "https://example.com/callback",
@@ -76,7 +77,7 @@ func TestOAuthHTTPClientFetchProfile(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewOAuthHTTPClient(config.OAuthConfig{
+	client := NewOAuthHTTPClient(config.CASRUCConfig{
 		ProfileURL: srv.URL + "/oauth/profile",
 	})
 
@@ -93,9 +94,9 @@ func TestOAuthHTTPClientFetchProfile(t *testing.T) {
 }
 
 func TestOAuthHTTPClientUsesTimeoutByDefault(t *testing.T) {
-	client := NewOAuthHTTPClient(config.OAuthConfig{})
-	if client.httpClient.Timeout <= 0 {
-		t.Fatalf("Timeout = %v, want > 0", client.httpClient.Timeout)
+	client := NewOAuthHTTPClient(config.CASRUCConfig{})
+	if client.Timeout() <= 0 {
+		t.Fatalf("Timeout = %v, want > 0", client.Timeout())
 	}
 }
 
@@ -106,4 +107,84 @@ func TestParseAccessTokenRejectsErrorAndArbitraryBodies(t *testing.T) {
 	if _, err := parseAccessToken([]byte("not a token")); err == nil {
 		t.Fatalf("parseAccessToken() error = nil, want error")
 	}
+}
+
+func TestCASRUCProviderBuildAuthorizeURL(t *testing.T) {
+	provider := providers.NewCASRUCProvider(nil, config.CASRUCConfig{
+		ClientID:     "client-id",
+		RedirectURL:  "https://example.com/callback",
+		AuthorizeURL: "https://cas.ruc.edu.cn/cas/oauth2.0/authorize",
+	})
+
+	got, err := provider.BuildAuthorizeURL("oauth-state")
+	if err != nil {
+		t.Fatalf("BuildAuthorizeURL() error = %v", err)
+	}
+	parsed, err := url.Parse(got)
+	if err != nil {
+		t.Fatalf("url.Parse() error = %v", err)
+	}
+	if parsed.Scheme != "https" || parsed.Host != "cas.ruc.edu.cn" {
+		t.Fatalf("authorize url = %q, want CAS host", got)
+	}
+	query := parsed.Query()
+	if query.Get("response_type") != "code" {
+		t.Fatalf("response_type = %q, want code", query.Get("response_type"))
+	}
+	if query.Get("scope") != "all" {
+		t.Fatalf("scope = %q, want all", query.Get("scope"))
+	}
+	if query.Get("redirect_uri") != "https://example.com/callback" {
+		t.Fatalf("redirect_uri = %q, want callback", query.Get("redirect_uri"))
+	}
+	if query.Get("state") != "oauth-state" {
+		t.Fatalf("state = %q, want oauth-state", query.Get("state"))
+	}
+	if query.Get("client_id") != "client-id" {
+		t.Fatalf("client_id = %q, want client-id", query.Get("client_id"))
+	}
+}
+
+func TestCASRUCProviderExchangeCode(t *testing.T) {
+	provider := providers.NewCASRUCProvider(&fakeProviderBackend{
+		accessToken: "token-123",
+	}, config.CASRUCConfig{})
+
+	token, err := provider.ExchangeCode(context.Background(), "code-abc")
+	if err != nil {
+		t.Fatalf("ExchangeCode() error = %v", err)
+	}
+	if token.AccessToken != "token-123" {
+		t.Fatalf("AccessToken = %q, want %q", token.AccessToken, "token-123")
+	}
+}
+
+func TestCASRUCProviderFetchIdentityMapsStudentID(t *testing.T) {
+	provider := providers.NewCASRUCProvider(&fakeProviderBackend{
+		profile: providers.OAuthProfile{LoginName: "2026001"},
+	}, config.CASRUCConfig{})
+
+	identity, err := provider.FetchIdentity(context.Background(), providers.TokenSet{AccessToken: "token-123"})
+	if err != nil {
+		t.Fatalf("FetchIdentity() error = %v", err)
+	}
+	if identity.StudentID != "2026001" {
+		t.Fatalf("StudentID = %q, want %q", identity.StudentID, "2026001")
+	}
+	if identity.Subject != "2026001" {
+		t.Fatalf("Subject = %q, want %q", identity.Subject, "2026001")
+	}
+}
+
+type fakeProviderBackend struct {
+	accessToken string
+	profile     providers.OAuthProfile
+}
+
+func (f *fakeProviderBackend) ExchangeCode(_ context.Context, _ string) (string, error) {
+	return f.accessToken, nil
+}
+
+func (f *fakeProviderBackend) FetchProfile(_ context.Context, _ string) (providers.OAuthProfile, error) {
+	return f.profile, nil
 }

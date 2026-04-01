@@ -3,11 +3,11 @@ package auth
 import (
 	"context"
 	"errors"
-	"net/url"
 	"testing"
 	"time"
 
 	"labkit.local/apps/api/internal/config"
+	authproviders "labkit.local/apps/api/internal/service/auth/providers"
 	"labkit.local/packages/go/db/sqlc"
 
 	"github.com/jackc/pgx/v5"
@@ -182,7 +182,178 @@ func TestHandleOAuthCallbackDoesNotApproveRequestWhenKeyBindingFails(t *testing.
 	}
 }
 
-func TestBeginDeviceVerificationIncludesScopeAndConfiguredRedirect(t *testing.T) {
+func TestHandleOAuthCallbackUsesProviderIdentityStudentID(t *testing.T) {
+	repo := newFakeRepository()
+	request := sqlc.DeviceAuthRequests{
+		DeviceCode: "device-code",
+		UserCode:   "user-code",
+		PublicKey:  testAuthorizedKey,
+		Status:     deviceAuthPending,
+		OauthState: pgtype.Text{String: "oauth-state", Valid: true},
+	}
+	repo.requestsByState["oauth-state"] = request
+	repo.requestsByDeviceCode["device-code"] = request
+	provider := &fakeProvider{
+		tokenSet: TokenSet{AccessToken: "access-token"},
+		identity: ExternalIdentity{
+			Provider:  "test-provider",
+			Subject:   "subject-123",
+			StudentID: "2026001",
+			Name:      "Test Student",
+			Email:     "student@example.edu",
+		},
+	}
+	svc := newTestServiceWithProvider(repo, provider)
+
+	result, err := svc.HandleOAuthCallback(context.Background(), "oauth-state", "auth-code")
+	if err != nil {
+		t.Fatalf("HandleOAuthCallback() error = %v", err)
+	}
+	if result.StudentID != "2026001" {
+		t.Fatalf("StudentID = %q, want %q", result.StudentID, "2026001")
+	}
+	if provider.exchangeCalls != 1 {
+		t.Fatalf("ExchangeCode called %d times, want 1", provider.exchangeCalls)
+	}
+	if provider.identityCalls != 1 {
+		t.Fatalf("FetchIdentity called %d times, want 1", provider.identityCalls)
+	}
+	if got := repo.usersByStudentID["2026001"].ID; got != 1 {
+		t.Fatalf("user id = %d, want %d", got, 1)
+	}
+}
+
+func TestHandleOAuthCallbackRejectsEmptyProviderStudentID(t *testing.T) {
+	repo := newFakeRepository()
+	request := sqlc.DeviceAuthRequests{
+		DeviceCode: "device-code",
+		UserCode:   "user-code",
+		PublicKey:  testAuthorizedKey,
+		Status:     deviceAuthPending,
+		OauthState: pgtype.Text{String: "oauth-state", Valid: true},
+	}
+	repo.requestsByState["oauth-state"] = request
+	repo.requestsByDeviceCode["device-code"] = request
+	provider := &fakeProvider{
+		tokenSet: TokenSet{AccessToken: "access-token"},
+		identity: ExternalIdentity{
+			Provider:  "test-provider",
+			Subject:   "subject-123",
+			StudentID: "",
+			Name:      "Test Student",
+		},
+	}
+	svc := newTestServiceWithProvider(repo, provider)
+
+	_, err := svc.HandleOAuthCallback(context.Background(), "oauth-state", "auth-code")
+	if !errors.Is(err, ErrInvalidCode) {
+		t.Fatalf("HandleOAuthCallback() error = %v, want ErrInvalidCode", err)
+	}
+	if provider.exchangeCalls != 1 {
+		t.Fatalf("ExchangeCode called %d times, want 1", provider.exchangeCalls)
+	}
+	if provider.identityCalls != 1 {
+		t.Fatalf("FetchIdentity called %d times, want 1", provider.identityCalls)
+	}
+	if repo.completeCalls != 0 {
+		t.Fatalf("CompleteDeviceAuthRequest called %d times, want 0", repo.completeCalls)
+	}
+}
+
+func TestHandleOAuthCallbackRejectsNilOAuthBackend(t *testing.T) {
+	repo := newFakeRepository()
+	request := sqlc.DeviceAuthRequests{
+		DeviceCode: "device-code",
+		UserCode:   "user-code",
+		PublicKey:  testAuthorizedKey,
+		Status:     deviceAuthPending,
+		OauthState: pgtype.Text{String: "oauth-state", Valid: true},
+	}
+	repo.requestsByState["oauth-state"] = request
+	repo.requestsByDeviceCode["device-code"] = request
+	svc := NewService(repo, nil, config.OAuthConfig{DeviceAuthTTL: time.Minute})
+	svc.now = func() time.Time { return time.Unix(1700000000, 0).UTC() }
+
+	_, err := svc.HandleOAuthCallback(context.Background(), "oauth-state", "auth-code")
+	if !errors.Is(err, ErrProviderNotConfigured) {
+		t.Fatalf("HandleOAuthCallback() error = %v, want ErrProviderNotConfigured", err)
+	}
+	if repo.completeCalls != 0 {
+		t.Fatalf("CompleteDeviceAuthRequest called %d times, want 0", repo.completeCalls)
+	}
+}
+
+func TestBeginDeviceVerificationUsesProviderAuthorizeURL(t *testing.T) {
+	repo := newFakeRepository()
+	request := sqlc.DeviceAuthRequests{
+		DeviceCode: "device-code",
+		UserCode:   "user-code",
+		PublicKey:  testAuthorizedKey,
+		Status:     deviceAuthPending,
+		OauthState: pgtype.Text{String: "oauth-state", Valid: true},
+		ExpiresAt:  pgtype.Timestamptz{Time: time.Unix(1700000000, 0).UTC().Add(time.Minute), Valid: true},
+	}
+	repo.requestsByDeviceCode["device-code"] = request
+	repo.requestsByState["oauth-state"] = request
+	provider := &fakeProvider{}
+	svc := newTestServiceWithProvider(repo, provider)
+
+	got, err := svc.BeginDeviceVerification(context.Background(), "user-code")
+	if err != nil {
+		t.Fatalf("BeginDeviceVerification() error = %v", err)
+	}
+	if got != "https://example.invalid/auth?state=oauth-state" {
+		t.Fatalf("authorize url = %q, want provider output", got)
+	}
+	if provider.authorizeCalls != 1 {
+		t.Fatalf("BuildAuthorizeURL called %d times, want 1", provider.authorizeCalls)
+	}
+	if provider.lastAuthorizeState != "oauth-state" {
+		t.Fatalf("BuildAuthorizeURL state = %q, want %q", provider.lastAuthorizeState, "oauth-state")
+	}
+}
+
+func TestBeginDeviceVerificationRejectsBlankOrInvalidRepoOAuthState(t *testing.T) {
+	tests := []struct {
+		name       string
+		oauthState pgtype.Text
+	}{
+		{
+			name:       "blank string",
+			oauthState: pgtype.Text{String: "   ", Valid: true},
+		},
+		{
+			name:       "invalid value",
+			oauthState: pgtype.Text{String: "", Valid: false},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := newFakeRepository()
+			repo.requestsByDeviceCode["device-code"] = sqlc.DeviceAuthRequests{
+				DeviceCode: "device-code",
+				UserCode:   "user-code",
+				PublicKey:  testAuthorizedKey,
+				Status:     deviceAuthPending,
+				OauthState: tc.oauthState,
+				ExpiresAt:  pgtype.Timestamptz{Time: time.Unix(1700000000, 0).UTC().Add(time.Minute), Valid: true},
+			}
+			provider := &fakeProvider{}
+			svc := newTestServiceWithProvider(repo, provider)
+
+			_, err := svc.BeginDeviceVerification(context.Background(), "user-code")
+			if !errors.Is(err, ErrInvalidState) {
+				t.Fatalf("BeginDeviceVerification() error = %v, want ErrInvalidState", err)
+			}
+			if provider.authorizeCalls != 0 {
+				t.Fatalf("BuildAuthorizeURL called %d times, want 0", provider.authorizeCalls)
+			}
+		})
+	}
+}
+
+func TestBeginDeviceVerificationRejectsNilOAuthBackend(t *testing.T) {
 	repo := newFakeRepository()
 	request := sqlc.DeviceAuthRequests{
 		DeviceCode: "device-code",
@@ -195,41 +366,12 @@ func TestBeginDeviceVerificationIncludesScopeAndConfiguredRedirect(t *testing.T)
 	repo.requestsByDeviceCode["device-code"] = request
 	repo.requestsByState["oauth-state"] = request
 
-	svc := NewService(repo, &fakeOAuthClient{}, config.OAuthConfig{
-		ClientID:      "school-client",
-		AuthorizeURL:  "https://cas.ruc.edu.cn/cas/oauth2.0/authorize",
-		RedirectURL:   "https://lab.ics.astralis.icu/api/device/verify",
-		DeviceAuthTTL: time.Minute,
-	})
+	svc := NewService(repo, nil, config.OAuthConfig{DeviceAuthTTL: time.Minute})
 	svc.now = func() time.Time { return time.Unix(1700000000, 0).UTC() }
 
-	got, err := svc.BeginDeviceVerification(context.Background(), "user-code")
-	if err != nil {
-		t.Fatalf("BeginDeviceVerification() error = %v", err)
-	}
-
-	parsed, err := url.Parse(got)
-	if err != nil {
-		t.Fatalf("url.Parse() error = %v", err)
-	}
-	if parsed.Scheme != "https" || parsed.Host != "cas.ruc.edu.cn" {
-		t.Fatalf("authorize url = %q, want CAS host", got)
-	}
-	query := parsed.Query()
-	if query.Get("response_type") != "code" {
-		t.Fatalf("response_type = %q, want code", query.Get("response_type"))
-	}
-	if query.Get("client_id") != "school-client" {
-		t.Fatalf("client_id = %q, want school-client", query.Get("client_id"))
-	}
-	if query.Get("redirect_uri") != "https://lab.ics.astralis.icu/api/device/verify" {
-		t.Fatalf("redirect_uri = %q, want production callback", query.Get("redirect_uri"))
-	}
-	if query.Get("state") != "oauth-state" {
-		t.Fatalf("state = %q, want oauth-state", query.Get("state"))
-	}
-	if query.Get("scope") != "all" {
-		t.Fatalf("scope = %q, want all", query.Get("scope"))
+	_, err := svc.BeginDeviceVerification(context.Background(), "user-code")
+	if !errors.Is(err, ErrProviderNotConfigured) {
+		t.Fatalf("BeginDeviceVerification() error = %v, want ErrProviderNotConfigured", err)
 	}
 }
 
@@ -283,12 +425,57 @@ func TestDevBindDeviceAuthorizationRequestRejectsBlankStudentID(t *testing.T) {
 }
 
 func newTestService(repo *fakeRepository, oauth OAuthClient) *Service {
-	svc := NewService(repo, oauth, config.OAuthConfig{DeviceAuthTTL: time.Minute})
+	svc := NewServiceWithProvider(repo, authproviders.NewCASRUCProvider(oauth, config.CASRUCConfig{}), config.OAuthConfig{DeviceAuthTTL: time.Minute})
 	svc.now = func() time.Time { return time.Unix(1700000000, 0).UTC() }
 	svc.newDeviceCode = func() (string, error) { return "device-code", nil }
 	svc.newUserCode = func() (string, error) { return "user-code", nil }
 	svc.newState = func() (string, error) { return "oauth-state", nil }
 	return svc
+}
+
+func newTestServiceWithProvider(repo *fakeRepository, provider Provider) *Service {
+	svc := NewServiceWithProvider(repo, provider, config.OAuthConfig{DeviceAuthTTL: time.Minute})
+	svc.now = func() time.Time { return time.Unix(1700000000, 0).UTC() }
+	svc.newDeviceCode = func() (string, error) { return "device-code", nil }
+	svc.newUserCode = func() (string, error) { return "user-code", nil }
+	svc.newState = func() (string, error) { return "oauth-state", nil }
+	return svc
+}
+
+type fakeProvider struct {
+	tokenSet           TokenSet
+	identity           ExternalIdentity
+	exchangeCalls      int
+	identityCalls      int
+	authorizeCalls     int
+	lastAuthorizeState string
+}
+
+func (f *fakeProvider) Name() string { return "test-provider" }
+
+func (f *fakeProvider) BuildAuthorizeURL(state string) (string, error) {
+	f.authorizeCalls++
+	f.lastAuthorizeState = state
+	return "https://example.invalid/auth?state=" + state, nil
+}
+
+func (f *fakeProvider) ExchangeCode(_ context.Context, _ string) (TokenSet, error) {
+	f.exchangeCalls++
+	if f.tokenSet.AccessToken == "" {
+		f.tokenSet.AccessToken = "access-token"
+	}
+	return f.tokenSet, nil
+}
+
+func (f *fakeProvider) FetchIdentity(_ context.Context, _ TokenSet) (ExternalIdentity, error) {
+	f.identityCalls++
+	if f.identity.Provider == "" {
+		f.identity.Provider = "test-provider"
+	}
+	if f.identity.Subject == "" {
+		f.identity.Subject = "subject-123"
+	}
+	return f.identity, nil
 }
 
 type fakeRepository struct {

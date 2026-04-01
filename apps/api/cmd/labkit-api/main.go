@@ -15,6 +15,7 @@ import (
 	httpapi "labkit.local/apps/api/internal/http"
 	adminsvc "labkit.local/apps/api/internal/service/admin"
 	authsvc "labkit.local/apps/api/internal/service/auth"
+	authproviders "labkit.local/apps/api/internal/service/auth/providers"
 	labsvc "labkit.local/apps/api/internal/service/labs"
 	boardsvc "labkit.local/apps/api/internal/service/leaderboard"
 	personalsvc "labkit.local/apps/api/internal/service/personal"
@@ -58,12 +59,16 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	authProvider, err := authproviders.New(oauthConfig)
+	if err != nil {
+		log.Fatal(err)
+	}
 	devMode := strings.EqualFold(strings.TrimSpace(os.Getenv("LABKIT_DEV_MODE")), "true")
 
 	server := &http.Server{
 		Addr: addr,
 		Handler: httpapi.NewRouter(
-			httpapi.WithAuthService(authsvc.NewService(authsvc.NewRepository(pool), authsvc.NewOAuthHTTPClient(oauthConfig), oauthConfig)),
+			httpapi.WithAuthService(authsvc.NewServiceWithProvider(authsvc.NewRepository(pool), authProvider, oauthConfig)),
 			httpapi.WithLabsService(labsvc.NewService(db.New(pool))),
 			httpapi.WithAdminService(adminsvc.NewService(adminsvc.NewRepository(pool))),
 			httpapi.WithLeaderboardService(boardsvc.NewService(boardsvc.NewRepository(pool))),

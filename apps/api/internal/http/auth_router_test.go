@@ -15,6 +15,7 @@ import (
 
 	"labkit.local/apps/api/internal/config"
 	authsvc "labkit.local/apps/api/internal/service/auth"
+	authproviders "labkit.local/apps/api/internal/service/auth/providers"
 	personalsvc "labkit.local/apps/api/internal/service/personal"
 	"labkit.local/packages/go/auth"
 	"labkit.local/packages/go/db/sqlc"
@@ -83,10 +84,16 @@ func TestRouterWiresDeviceAuthRoutes(t *testing.T) {
 
 func TestRouterWiresDeviceVerifyRoute(t *testing.T) {
 	repo := newRouterAuthRepo()
-	svc := authsvc.NewService(repo, verifyOAuthClient{}, config.OAuthConfig{
+	svc := authsvc.NewServiceWithProvider(repo, authproviders.NewCASRUCProvider(verifyOAuthClient{}, config.CASRUCConfig{
 		ClientID:     "labkit-client",
 		AuthorizeURL: "https://sso.example.edu/oauth2/authorize",
 		RedirectURL:  "/api/device/verify",
+	}), config.OAuthConfig{
+		CASRUC: config.CASRUCConfig{
+			ClientID:     "labkit-client",
+			AuthorizeURL: "https://sso.example.edu/oauth2/authorize",
+			RedirectURL:  "/api/device/verify",
+		},
 	})
 	router := NewRouter(WithAuthService(svc))
 
@@ -265,10 +272,16 @@ func TestRouterRejectsOpenRedirectInWebSessionTicket(t *testing.T) {
 
 func TestRouterRedirectsOAuthCallbackToAuthConfirmAndIssuesBrowserSession(t *testing.T) {
 	repo := newRouterAuthRepo()
-	authSvc := authsvc.NewService(repo, verifyOAuthClient{}, config.OAuthConfig{
+	authSvc := authsvc.NewServiceWithProvider(repo, authproviders.NewCASRUCProvider(verifyOAuthClient{}, config.CASRUCConfig{
 		ClientID:     "labkit-client",
 		AuthorizeURL: "https://sso.example.edu/oauth2/authorize",
 		RedirectURL:  "/api/device/verify",
+	}), config.OAuthConfig{
+		CASRUC: config.CASRUCConfig{
+			ClientID:     "labkit-client",
+			AuthorizeURL: "https://sso.example.edu/oauth2/authorize",
+			RedirectURL:  "/api/device/verify",
+		},
 	})
 	personalRepo := newPersonalTestRepo(t, true)
 	router := NewRouter(
