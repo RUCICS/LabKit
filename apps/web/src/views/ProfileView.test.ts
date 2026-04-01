@@ -1,0 +1,239 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createApp, defineComponent, h, nextTick, ref } from 'vue';
+import AuthConfirmView from './AuthConfirmView.vue';
+import AdminQueueView from './AdminQueueView.vue';
+import ProfileView from './ProfileView.vue';
+
+async function flush() {
+  await Promise.resolve();
+  await Promise.resolve();
+  await nextTick();
+}
+
+async function mountView(component: any, url = '/') {
+  const el = document.createElement('div');
+  document.body.appendChild(el);
+  window.history.pushState({}, '', url);
+  const app = createApp(component);
+  app.mount(el);
+  await flush();
+  return {
+    unmount() {
+      app.unmount();
+      el.remove();
+    }
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
+function jsonResponse(payload: unknown, status = 200) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => payload,
+    text: async () => JSON.stringify(payload)
+  } as Response;
+}
+
+afterEach(() => {
+  document.body.innerHTML = '';
+  vi.restoreAllMocks();
+});
+
+describe('AuthConfirmView', () => {
+  it('renders the OAuth confirmation success state', async () => {
+    const view = await mountView(
+      AuthConfirmView,
+      '/auth/confirm?student_id=2026001&user_key_id=11'
+    );
+
+    expect(document.body.textContent).toContain('Confirmation complete');
+    expect(document.body.textContent).toContain('2026001');
+    expect(document.body.textContent).toContain('Key 11');
+    expect(document.body.textContent).not.toContain('浏览器侧授权完成，现在可以返回终端。');
+
+    view.unmount();
+  });
+
+  it('renders the generic browser session recovery state without student details', async () => {
+    const view = await mountView(AuthConfirmView, '/auth/confirm?mode=web-session');
+
+    expect(document.body.textContent).toContain('Browser session restored');
+    expect(document.body.textContent).toContain('Confirmation complete');
+    expect(document.body.textContent).not.toContain('Student ID');
+    expect(document.body.textContent).not.toContain('Key 11');
+
+    view.unmount();
+  });
+});
+
+describe('ProfileView', () => {
+  it('renders the user key list', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        keys: [
+          {
+            id: 11,
+            public_key: 'ssh-ed25519 AAAA',
+            device_name: 'Laptop',
+            created_at: '2026-03-31T10:00:00Z'
+          },
+          {
+            id: 12,
+            public_key: 'ssh-ed25519 BBBB',
+            device_name: 'Phone',
+            created_at: '2026-03-31T11:00:00Z'
+          }
+        ]
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const view = await mountView(ProfileView, '/profile');
+
+    expect(document.body.textContent).toContain('Devices');
+    expect(document.body.textContent).toContain('Laptop');
+    expect(document.body.textContent).toContain('Phone');
+    expect(document.body.textContent).not.toContain('已绑定设备与密钥指纹。');
+    expect(fetchMock).toHaveBeenCalledWith('/api/keys', expect.objectContaining({ credentials: 'include' }));
+
+    view.unmount();
+  });
+
+  it('renders an empty state when no keys exist', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ keys: [] })));
+
+    const view = await mountView(ProfileView, '/profile');
+
+    expect(document.body.textContent).toContain('No keys are registered yet.');
+
+    view.unmount();
+  });
+});
+
+describe('AdminQueueView', () => {
+  it('renders queue job statuses', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        jsonResponse({
+          lab_id: 'sorting',
+          jobs: [
+            {
+              id: 'job-1',
+              submission_id: 'sub-1',
+              user_id: 7,
+              status: 'running',
+              attempts: 1,
+              available_at: '2026-03-31T10:00:00Z',
+              worker_id: 'worker-1',
+              last_error: '',
+              started_at: '2026-03-31T10:01:00Z',
+              finished_at: '',
+              created_at: '2026-03-31T10:00:00Z',
+              updated_at: '2026-03-31T10:02:00Z'
+            },
+            {
+              id: 'job-2',
+              submission_id: 'sub-2',
+              user_id: 8,
+              status: 'queued',
+              attempts: 0,
+              available_at: '2026-03-31T10:05:00Z',
+              worker_id: '',
+              last_error: '',
+              started_at: '',
+              finished_at: '',
+              created_at: '2026-03-31T10:05:00Z',
+              updated_at: '2026-03-31T10:05:00Z'
+            }
+          ]
+        })
+      )
+    );
+
+    const view = await mountView(AdminQueueView, '/admin/labs/sorting/queue');
+
+    expect(document.body.textContent).toContain('Queue status');
+    expect(document.body.textContent).toContain('running');
+    expect(document.body.textContent).toContain('queued');
+
+    view.unmount();
+  });
+
+  it('reads the admin token from browser storage for queue fetches', async () => {
+    window.sessionStorage.setItem('labkit_admin_token', 'secret');
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        lab_id: 'sorting',
+        jobs: []
+      })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const view = await mountView(AdminQueueView, '/admin/labs/sorting/queue');
+
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/labs/sorting/queue', expect.any(Object));
+    expect(new Headers((init as RequestInit | undefined)?.headers).get('Authorization')).toBe(
+      'Bearer secret'
+    );
+
+    view.unmount();
+  });
+
+  it('keeps the newest queue result when the lab changes quickly', async () => {
+    const first = deferred<Response>();
+    const second = deferred<Response>();
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(async () => first.promise)
+      .mockImplementationOnce(async () => second.promise);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const labId = ref('sorting');
+    const Root = defineComponent({
+      setup() {
+        return () => h(AdminQueueView, { labId: labId.value });
+      }
+    });
+
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const app = createApp(Root);
+    app.mount(el);
+    await flush();
+
+    labId.value = 'systems';
+    await flush();
+
+    second.resolve(
+      jsonResponse({
+        lab_id: 'systems',
+        jobs: [{ id: 'latest-job', status: 'queued', updated_at: '2026-03-31T10:10:00Z' }]
+      })
+    );
+    await flush();
+
+    first.resolve(
+      jsonResponse({
+        lab_id: 'sorting',
+        jobs: [{ id: 'stale-job', status: 'running', updated_at: '2026-03-31T10:09:00Z' }]
+      })
+    );
+    await flush();
+
+    expect(document.body.textContent).toContain('systems');
+    expect(document.body.textContent).toContain('latest-job');
+    expect(document.body.textContent).not.toContain('stale-job');
+
+    app.unmount();
+    el.remove();
+  });
+});
