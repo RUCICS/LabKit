@@ -539,6 +539,112 @@ func TestSubmitCommandWaitsForFinalStatusAndRendersScores(t *testing.T) {
 	}
 }
 
+func TestSubmitCommandShowsInitialFeedbackBeforeServerAcceptsSubmission(t *testing.T) {
+	configDir := t.TempDir()
+	keyPath := filepath.Join(configDir, "id_ed25519")
+	pub, priv := mustWriteConfigAndKey(t, configDir, keyPath, "", 11)
+
+	mainPath := filepath.Join(t.TempDir(), "main.c")
+	readmePath := filepath.Join(t.TempDir(), "README.md")
+	mustWriteFile(t, mainPath, []byte("int main(void) { return 0; }\n"))
+	mustWriteFile(t, readmePath, []byte("# sorting\n"))
+
+	var stdout bytes.Buffer
+	postStarted := make(chan struct{})
+	releasePost := make(chan struct{})
+	releasePostOnce := false
+	release := func() {
+		if releasePostOnce {
+			return
+		}
+		releasePostOnce = true
+		close(releasePost)
+	}
+	defer release()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
+			writeLabManifest(t, w, manifest.Manifest{
+				Lab:    manifest.LabSection{ID: "sorting", Name: "Sorting"},
+				Submit: manifest.SubmitSection{Files: []string{"main.c", "README.md"}, MaxSize: "1MB"},
+				Eval:   manifest.EvalSection{Image: "ghcr.io/labkit/sorting:1"},
+				Quota:  manifest.QuotaSection{Daily: 3},
+				Metrics: []manifest.MetricSection{
+					{ID: "throughput", Name: "Throughput", Sort: manifest.MetricSortDesc},
+				},
+				Board:    manifest.BoardSection{RankBy: "throughput"},
+				Schedule: manifest.ScheduleSection{Open: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Close: time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/labs/sorting/submit":
+			captureSubmitRequest(t, r, pub)
+			close(postStarted)
+			<-releasePost
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":     "11111111-1111-7111-8111-111111111111",
+				"status": "queued",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("LABKIT_SERVER_URL", srv.URL)
+
+	if err := config.Write(configDir, config.Config{
+		ServerURL: "",
+		KeyPath:   keyPath,
+		KeyID:     11,
+	}); err != nil {
+		t.Fatalf("config.Write() error = %v", err)
+	}
+	if err := keycrypto.WritePrivateKey(keyPath, priv); err != nil {
+		t.Fatalf("WritePrivateKey() error = %v", err)
+	}
+
+	deps := &Dependencies{
+		ConfigDir:  configDir,
+		HTTPClient: srv.Client(),
+		Now:        func() time.Time { return time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC) },
+		Out:        &stdout,
+		Err:        io.Discard,
+	}
+
+	cmd := NewRootCommand(deps)
+	cmd.SetArgs([]string{"--lab", "sorting", "submit", "--no-wait", mainPath, readmePath})
+
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Execute()
+	}()
+
+	select {
+	case <-postStarted:
+	case <-time.After(time.Second):
+		t.Fatal("submit POST did not start")
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for !strings.Contains(stdout.String(), "Contacting server...") {
+		if time.Now().After(deadline) {
+			release()
+			t.Fatalf("stdout = %q, want initial feedback before submit request completes", stdout.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	release()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Execute() error = %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("submit command did not finish after server response")
+	}
+}
+
 func TestSubmitCommandDetachAndNoWaitSkipPolling(t *testing.T) {
 	for _, flag := range []string{"--detach", "--no-wait"} {
 		t.Run(flag, func(t *testing.T) {

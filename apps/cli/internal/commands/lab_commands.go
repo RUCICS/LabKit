@@ -210,45 +210,70 @@ func runSubmit(ctx context.Context, deps *Dependencies, args []string, detach, n
 	if err != nil {
 		return err
 	}
+	waitSpinner := newLineSpinner(deps.Out, submitOutputIsTTY(deps.Out), "Contacting server...")
+	stopWaitSpinner := func() {
+		if waitSpinner == nil {
+			return
+		}
+		_ = waitSpinner.Stop()
+		waitSpinner = nil
+	}
+	if err := waitSpinner.Start(); err != nil {
+		return err
+	}
 	lab, err := client.getLab(ctx, labID)
 	if err != nil {
+		stopWaitSpinner()
 		return err
 	}
 	files, err := validateSubmissionFiles(lab.Manifest.Submit.Files, args)
 	if err != nil {
+		stopWaitSpinner()
 		return err
 	}
 	archiveHash, err := submissionArchiveHash(files)
 	if err != nil {
+		stopWaitSpinner()
 		return err
 	}
 
 	body, contentType, err := buildMultipartSubmission(files)
 	if err != nil {
+		stopWaitSpinner()
 		return err
 	}
 	if cfg.KeyID == 0 {
+		stopWaitSpinner()
 		return fmt.Errorf("key id is required; run auth first")
 	}
 	privateKey, err := readPrivateKeyWithDeps(deps, cfg.KeyPath)
 	if err != nil {
+		stopWaitSpinner()
 		return err
 	}
 	nonce, err := newNonce()
 	if err != nil {
+		stopWaitSpinner()
 		return err
 	}
 	payload := auth.NewPayload(labID, client.now().UTC(), nonce, submissionFileNames(files)).
 		WithContentHash(archiveHash)
+	if err := waitSpinner.Update("Sending submission..."); err != nil {
+		stopWaitSpinner()
+		return err
+	}
 	req, err := client.signedRequestWithPayload(ctx, http.MethodPost, "/api/labs/"+labID+"/submit", body, contentType, cfg, privateKey, payload)
 	if err != nil {
+		stopWaitSpinner()
 		return err
 	}
 
 	var submission submissionResponse
 	if err := client.doJSON(req, &submission); err != nil {
+		stopWaitSpinner()
 		return err
 	}
+	stopWaitSpinner()
 
 	if detach || noWait {
 		return renderSubmissionSummary(deps.Out, submission, "", "")
