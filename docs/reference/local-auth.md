@@ -10,7 +10,7 @@ LabKit 现在有三条不同的身份路径：
    常规路径是设备授权后在本地保存 Ed25519 私钥，之后所有个人操作都走签名鉴权。
 
 2. 浏览器学生会话
-   只会在 `/api/device/verify` 的 OAuth 回调成功后创建。它的作用是让网页可以读取“当前学生自己的”历史、设备、公钥等信息。
+   只会在 `/api/device/verify` 的 OAuth 回调成功后创建。用户可见的输入页现在在 `/auth/device`，而不是直接打开 API callback 路径。它的作用是让网页可以读取“当前学生自己的”历史、设备、公钥等信息。
 
 3. Admin
    现在不是用户登录体系，而是单个全局 Bearer Token。服务端从环境变量 `LABKIT_ADMIN_TOKEN` 读取，前端只是把这个 token 带到 `Authorization: Bearer <token>` 里。
@@ -84,8 +84,8 @@ lab = "local-smoke"
 
 浏览器会话只在 OAuth 回调成功后创建：
 
-1. 浏览器访问 `/api/device/verify`
-2. 走 OAuth 授权码回调
+1. 浏览器访问 `/auth/device`
+2. 页面把 `user_code` 交给 `/api/device/verify` 发起 OAuth
 3. API 在回调处理成功后创建 `labkit_browser_session` Cookie
 4. 再重定向到 `/auth/confirm`
 

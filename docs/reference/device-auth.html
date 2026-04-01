@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LabKit — 设备授权</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════
+   Design Tokens (shared with main app)
+   ═══════════════════════════════════════════════ */
+:root {
+  --bg-root: #06090f;
+  --bg-surface: #0b1120;
+  --bg-elevated: #111a2e;
+  --bg-hover: #162038;
+
+  --border-subtle: rgba(148, 163, 194, 0.06);
+  --border-default: rgba(148, 163, 194, 0.10);
+  --border-strong: rgba(148, 163, 194, 0.16);
+  --border-focus: rgba(148, 163, 194, 0.30);
+
+  --text-primary: #e2e8f0;
+  --text-secondary: #8494a7;
+  --text-tertiary: #4a5568;
+  --text-inverse: #06090f;
+
+  --color-accent: #f59e0b;
+  --color-accent-dim: rgba(245, 158, 11, 0.12);
+  --color-accent-glow: rgba(245, 158, 11, 0.25);
+  --color-success: #34d399;
+  --color-success-dim: rgba(52, 211, 153, 0.12);
+  --color-error: #f87171;
+  --color-error-dim: rgba(248, 113, 113, 0.12);
+
+  --font-mono: 'JetBrains Mono', 'Menlo', 'Consolas', monospace;
+  --font-sans: 'IBM Plex Sans', 'Noto Sans SC', -apple-system, sans-serif;
+}
+
+/* ═══════════════════════════════════════════════
+   Reset
+   ═══════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 14px; -webkit-font-smoothing: antialiased; }
+
+body {
+  background: var(--bg-root);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════
+   Animated grid background
+   ═══════════════════════════════════════════════ */
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background:
+    linear-gradient(rgba(148, 163, 194, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 194, 0.025) 1px, transparent 1px);
+  background-size: 48px 48px;
+  animation: gridDrift 20s linear infinite;
+  pointer-events: none; z-index: 0;
+}
+
+@keyframes gridDrift {
+  0%   { background-position: 0 0, 0 0; }
+  100% { background-position: 48px 48px, 48px 48px; }
+}
+
+/* Central glow */
+body::after {
+  content: '';
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -60%);
+  width: 600px; height: 400px;
+  background: radial-gradient(ellipse, var(--color-accent-glow) 0%, transparent 70%);
+  opacity: 0.2;
+  pointer-events: none; z-index: 0;
+  transition: all 0.8s ease;
+}
+
+/* Success state glow */
+body.success::after {
+  background: radial-gradient(ellipse, rgba(52, 211, 153, 0.25) 0%, transparent 70%);
+  opacity: 0.3;
+}
+
+/* ═══════════════════════════════════════════════
+   Main card
+   ═══════════════════════════════════════════════ */
+.auth-card {
+  position: relative; z-index: 1;
+  width: 100%;
+  max-width: 440px;
+  padding: 0 24px;
+  animation: cardEnter 0.5s ease both;
+}
+
+@keyframes cardEnter {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ═══════════════════════════════════════════════
+   Logo
+   ═══════════════════════════════════════════════ */
+.auth-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 48px;
+}
+
+.logo-icon {
+  width: 36px; height: 36px;
+  background: var(--color-accent);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 18px; font-weight: 800;
+  color: var(--text-inverse);
+}
+
+.logo-text {
+  font-family: var(--font-mono);
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+/* ═══════════════════════════════════════════════
+   Form container
+   ═══════════════════════════════════════════════ */
+.auth-form {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  padding: 36px 32px;
+  text-align: center;
+}
+
+.auth-title {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+  letter-spacing: -0.02em;
+}
+
+.auth-desc {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 32px;
+  line-height: 1.5;
+}
+
+.auth-desc code {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  background: var(--bg-elevated);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+}
+
+/* ═══════════════════════════════════════════════
+   Code input
+   ═══════════════════════════════════════════════ */
+.code-group {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 28px;
+}
+
+.code-half {
+  display: flex;
+  gap: 6px;
+}
+
+.code-sep {
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  font-weight: 300;
+  color: var(--text-tertiary);
+  margin: 0 4px;
+  user-select: none;
+}
+
+.code-input {
+  width: 44px; height: 56px;
+  background: var(--bg-root);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: center;
+  text-transform: uppercase;
+  outline: none;
+  transition: all 0.15s ease;
+  caret-color: var(--color-accent);
+}
+
+.code-input::placeholder {
+  color: var(--text-tertiary);
+  opacity: 0.4;
+  font-weight: 400;
+}
+
+.code-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-dim), 0 0 20px var(--color-accent-dim);
+  background: var(--bg-elevated);
+}
+
+.code-input.filled {
+  border-color: var(--border-focus);
+  background: var(--bg-elevated);
+}
+
+.code-input.error {
+  border-color: var(--color-error);
+  box-shadow: 0 0 0 3px var(--color-error-dim);
+  animation: inputShake 0.4s ease;
+}
+
+@keyframes inputShake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+
+.code-input.success {
+  border-color: var(--color-success);
+  color: var(--color-success);
+  box-shadow: 0 0 0 3px var(--color-success-dim);
+}
+
+/* ═══════════════════════════════════════════════
+   Submit button
+   ═══════════════════════════════════════════════ */
+.auth-submit {
+  width: 100%;
+  padding: 12px 24px;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-inverse);
+  background: var(--color-accent);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.auth-submit:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3);
+}
+
+.auth-submit:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.auth-submit:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.auth-submit.loading {
+  color: transparent;
+  pointer-events: none;
+}
+
+.auth-submit.loading::after {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 18px; height: 18px;
+  margin: -9px 0 0 -9px;
+  border: 2px solid var(--text-inverse);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ═══════════════════════════════════════════════
+   Feedback messages
+   ═══════════════════════════════════════════════ */
+.auth-message {
+  margin-top: 16px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  min-height: 20px;
+  transition: all 0.2s ease;
+}
+
+.auth-message.error { color: var(--color-error); }
+.auth-message.success { color: var(--color-success); }
+
+/* ═══════════════════════════════════════════════
+   Footer info
+   ═══════════════════════════════════════════════ */
+.auth-footer {
+  margin-top: 24px;
+  text-align: center;
+}
+
+.auth-footer-text {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  line-height: 1.8;
+}
+
+.auth-footer-text svg {
+  width: 12px; height: 12px;
+  vertical-align: -2px;
+  margin-right: 3px;
+  opacity: 0.5;
+}
+
+/* ═══════════════════════════════════════════════
+   Success overlay state
+   ═══════════════════════════════════════════════ */
+.success-overlay {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 0 8px;
+  animation: fadeIn 0.4s ease both;
+}
+
+.success-overlay.visible { display: flex; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.success-icon {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  background: var(--color-success-dim);
+  border: 2px solid rgba(52, 211, 153, 0.3);
+  display: flex; align-items: center; justify-content: center;
+  animation: successPop 0.5s ease both;
+}
+
+@keyframes successPop {
+  0%   { transform: scale(0.5); opacity: 0; }
+  60%  { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.success-icon svg { width: 28px; height: 28px; color: var(--color-success); }
+
+.success-text {
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-success);
+}
+
+.success-detail {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  text-align: center;
+}
+
+.success-detail strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.success-countdown {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  margin-top: 4px;
+}
+
+/* ═══════════════════════════════════════════════
+   Terminal hint at bottom
+   ═══════════════════════════════════════════════ */
+.terminal-hint {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: hintEnter 0.5s ease 0.3s both;
+  white-space: nowrap;
+}
+
+@keyframes hintEnter {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.terminal-hint .hint-prompt {
+  color: var(--color-accent);
+  font-weight: 600;
+  opacity: 0.6;
+}
+
+.terminal-hint .hint-cmd {
+  color: var(--text-secondary);
+}
+
+/* ═══════════════════════════════════════════════
+   Responsive
+   ═══════════════════════════════════════════════ */
+@media (max-width: 480px) {
+  .auth-card { padding: 0 16px; }
+  .auth-form { padding: 28px 20px; }
+  .code-input { width: 38px; height: 50px; font-size: 1.2rem; }
+  .code-sep { font-size: 1.2rem; margin: 0 2px; }
+  .code-half { gap: 5px; }
+  .terminal-hint { display: none; }
+  .auth-logo { margin-bottom: 36px; }
+}
+</style>
+</head>
+<body>
+
+<div class="auth-card">
+
+  <!-- Logo -->
+  <div class="auth-logo">
+    <div class="logo-icon">L</div>
+    <span class="logo-text">LabKit</span>
+  </div>
+
+  <!-- Form -->
+  <div class="auth-form">
+    <div id="inputView">
+      <h1 class="auth-title">设备授权</h1>
+      <p class="auth-desc">请输入终端中 <code>labkit auth</code> 显示的验证码</p>
+
+      <div class="code-group">
+        <div class="code-half">
+          <input class="code-input" type="text" maxlength="1" data-index="0" placeholder="·" autocomplete="off" autofocus>
+          <input class="code-input" type="text" maxlength="1" data-index="1" placeholder="·" autocomplete="off">
+          <input class="code-input" type="text" maxlength="1" data-index="2" placeholder="·" autocomplete="off">
+          <input class="code-input" type="text" maxlength="1" data-index="3" placeholder="·" autocomplete="off">
+        </div>
+        <span class="code-sep">–</span>
+        <div class="code-half">
+          <input class="code-input" type="text" maxlength="1" data-index="4" placeholder="·" autocomplete="off">
+          <input class="code-input" type="text" maxlength="1" data-index="5" placeholder="·" autocomplete="off">
+          <input class="code-input" type="text" maxlength="1" data-index="6" placeholder="·" autocomplete="off">
+          <input class="code-input" type="text" maxlength="1" data-index="7" placeholder="·" autocomplete="off">
+        </div>
+      </div>
+
+      <button class="auth-submit" id="submitBtn" disabled onclick="handleSubmit()">确认授权</button>
+      <div class="auth-message" id="message"></div>
+    </div>
+
+    <!-- Success state (hidden by default) -->
+    <div class="success-overlay" id="successView">
+      <div class="success-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <span class="success-text">设备已授权</span>
+      <p class="success-detail">
+        公钥已绑定至学号 <strong id="studentId">2024011234</strong><br>
+        你现在可以回到终端使用 LabKit
+      </p>
+      <span class="success-countdown" id="countdown">页面将在 5 秒后关闭</span>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="auth-footer">
+    <p class="auth-footer-text">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      通过学校 SSO 认证 · Ed25519 签名绑定
+    </p>
+  </div>
+
+</div>
+
+<!-- Terminal hint -->
+<div class="terminal-hint" id="terminalHint">
+  <span class="hint-prompt">$</span>
+  <span class="hint-cmd">labkit auth</span>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+//  Code input logic
+// ═══════════════════════════════════════════════
+const inputs = document.querySelectorAll('.code-input');
+const submitBtn = document.getElementById('submitBtn');
+const messageEl = document.getElementById('message');
+
+// Focus management
+inputs.forEach((input, i) => {
+  input.addEventListener('input', (e) => {
+    const val = e.target.value;
+    if (val) {
+      input.classList.add('filled');
+      input.classList.remove('error');
+      // Advance to next
+      if (i < inputs.length - 1) {
+        inputs[i + 1].focus();
+      }
+    } else {
+      input.classList.remove('filled');
+    }
+    updateSubmitState();
+  });
+
+  input.addEventListener('keydown', (e) => {
+    // Backspace: clear current, move back
+    if (e.key === 'Backspace' && !input.value && i > 0) {
+      e.preventDefault();
+      inputs[i - 1].value = '';
+      inputs[i - 1].classList.remove('filled');
+      inputs[i - 1].focus();
+      updateSubmitState();
+    }
+    // Arrow keys
+    if (e.key === 'ArrowLeft' && i > 0) {
+      e.preventDefault();
+      inputs[i - 1].focus();
+    }
+    if (e.key === 'ArrowRight' && i < inputs.length - 1) {
+      e.preventDefault();
+      inputs[i + 1].focus();
+    }
+    // Enter to submit
+    if (e.key === 'Enter' && getCode().length === 8) {
+      handleSubmit();
+    }
+  });
+
+  // Select all on focus
+  input.addEventListener('focus', () => {
+    setTimeout(() => input.select(), 0);
+  });
+
+  // Handle paste
+  input.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const pasted = (e.clipboardData.getData('text') || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    if (!pasted) return;
+    for (let j = 0; j < pasted.length && (i + j) < inputs.length; j++) {
+      inputs[i + j].value = pasted[j];
+      inputs[i + j].classList.add('filled');
+      inputs[i + j].classList.remove('error');
+    }
+    const nextIdx = Math.min(i + pasted.length, inputs.length - 1);
+    inputs[nextIdx].focus();
+    updateSubmitState();
+  });
+});
+
+function getCode() {
+  return Array.from(inputs).map(i => i.value).join('');
+}
+
+function updateSubmitState() {
+  const code = getCode();
+  submitBtn.disabled = code.length < 8;
+}
+
+// ═══════════════════════════════════════════════
+//  Submit handler (simulated)
+// ═══════════════════════════════════════════════
+async function handleSubmit() {
+  const code = getCode().toUpperCase();
+  if (code.length < 8) return;
+
+  // Clear previous error
+  messageEl.textContent = '';
+  messageEl.className = 'auth-message';
+
+  // Loading state
+  submitBtn.classList.add('loading');
+  submitBtn.disabled = true;
+
+  // Simulate verification
+  await new Promise(r => setTimeout(r, 1500));
+
+  // Simulate: ABCD-1234 succeeds, anything else fails
+  if (code === 'ABCD1234') {
+    showSuccess();
+  } else {
+    showError();
+  }
+}
+
+function showError() {
+  submitBtn.classList.remove('loading');
+  submitBtn.disabled = false;
+
+  // Shake inputs
+  inputs.forEach(input => {
+    input.classList.add('error');
+  });
+
+  messageEl.textContent = '验证码无效或已过期，请检查终端中的验证码';
+  messageEl.className = 'auth-message error';
+
+  // Clear error state after animation
+  setTimeout(() => {
+    inputs.forEach(input => input.classList.remove('error'));
+  }, 600);
+}
+
+function showSuccess() {
+  submitBtn.classList.remove('loading');
+
+  // Mark inputs as success
+  inputs.forEach(input => {
+    input.classList.remove('error');
+    input.classList.add('success');
+    input.disabled = true;
+  });
+
+  // Switch body glow
+  document.body.classList.add('success');
+
+  // Hide terminal hint
+  document.getElementById('terminalHint').style.opacity = '0';
+
+  // Transition to success view
+  setTimeout(() => {
+    document.getElementById('inputView').style.display = 'none';
+    const sv = document.getElementById('successView');
+    sv.classList.add('visible');
+
+    // Countdown
+    let sec = 5;
+    const cdEl = document.getElementById('countdown');
+    const timer = setInterval(() => {
+      sec--;
+      if (sec <= 0) {
+        clearInterval(timer);
+        cdEl.textContent = '页面已可关闭';
+      } else {
+        cdEl.textContent = `页面将在 ${sec} 秒后关闭`;
+      }
+    }, 1000);
+  }, 500);
+}
+</script>
+</body>
+</html>

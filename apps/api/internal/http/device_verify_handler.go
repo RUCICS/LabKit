@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -37,20 +36,7 @@ func (h *DeviceVerifyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	_, _ = fmt.Fprint(w, `<!doctype html>
-<html lang="en">
-<head><meta charset="utf-8"><title>LabKit Device Verification</title></head>
-<body>
-<h1>LabKit Device Verification</h1>
-<form method="get" action="/api/device/verify">
-  <label for="user_code">User code</label>
-  <input id="user_code" name="user_code" autocomplete="off" />
-  <button type="submit">Continue</button>
-</form>
-</body>
-</html>`)
+	http.Error(w, "missing user_code or oauth callback parameters", http.StatusBadRequest)
 }
 
 func (h *DeviceVerifyHandler) writeError(w http.ResponseWriter, r *http.Request, err error) {

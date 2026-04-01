@@ -49,28 +49,55 @@ afterEach(() => {
 
 describe('AuthConfirmView', () => {
   it('renders the OAuth confirmation success state', async () => {
+    vi.useFakeTimers();
+    const close = vi.fn();
+    Object.defineProperty(window, 'close', {
+      value: close,
+      configurable: true
+    });
+
     const view = await mountView(
       AuthConfirmView,
       '/auth/confirm?student_id=2026001&user_key_id=11'
     );
 
-    expect(document.body.textContent).toContain('Confirmation complete');
+    expect(document.body.textContent).toContain('设备已授权');
     expect(document.body.textContent).toContain('2026001');
-    expect(document.body.textContent).toContain('Key 11');
-    expect(document.body.textContent).not.toContain('浏览器侧授权完成，现在可以返回终端。');
+    expect(document.body.textContent).toContain('你现在可以回到终端使用 LabKit');
+    expect(document.body.textContent).toContain('页面将在 5 秒后关闭');
+    expect(document.querySelector('svg')).not.toBeNull();
+
+    vi.advanceTimersByTime(5000);
+    await flush();
+
+    expect(close).toHaveBeenCalledTimes(1);
 
     view.unmount();
+    vi.useRealTimers();
   });
 
   it('renders the generic browser session recovery state without student details', async () => {
+    vi.useFakeTimers();
+    const close = vi.fn();
+    Object.defineProperty(window, 'close', {
+      value: close,
+      configurable: true
+    });
+
     const view = await mountView(AuthConfirmView, '/auth/confirm?mode=web-session');
 
     expect(document.body.textContent).toContain('Browser session restored');
-    expect(document.body.textContent).toContain('Confirmation complete');
+    expect(document.body.textContent).toContain('页面将在 5 秒后关闭');
     expect(document.body.textContent).not.toContain('Student ID');
     expect(document.body.textContent).not.toContain('Key 11');
 
+    vi.advanceTimersByTime(5000);
+    await flush();
+
+    expect(close).toHaveBeenCalledTimes(1);
+
     view.unmount();
+    vi.useRealTimers();
   });
 });
 

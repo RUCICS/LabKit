@@ -35,8 +35,8 @@ func TestCreateDeviceAuthorizationRequestPersistsPendingRequest(t *testing.T) {
 	if result.OAuthState != "oauth-state" {
 		t.Fatalf("OAuthState = %q, want %q", result.OAuthState, "oauth-state")
 	}
-	if result.VerificationURL != "/api/device/verify" {
-		t.Fatalf("VerificationURL = %q, want %q", result.VerificationURL, "/api/device/verify")
+	if result.VerificationURL != "/auth/device" {
+		t.Fatalf("VerificationURL = %q, want %q", result.VerificationURL, "/auth/device")
 	}
 	if got := repo.requestsByDeviceCode["device-code"].Status; got != deviceAuthPending {
 		t.Fatalf("stored status = %q, want %q", got, deviceAuthPending)

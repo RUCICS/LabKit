@@ -48,8 +48,8 @@ func TestRouterWiresDeviceAuthRoutes(t *testing.T) {
 	if authorizePayload.DeviceCode == "" {
 		t.Fatal("authorize response missing device_code")
 	}
-	if authorizePayload.VerificationURL != "/api/device/verify" {
-		t.Fatalf("verification_url = %q, want %q", authorizePayload.VerificationURL, "/api/device/verify")
+	if authorizePayload.VerificationURL != "/auth/device" {
+		t.Fatalf("verification_url = %q, want %q", authorizePayload.VerificationURL, "/auth/device")
 	}
 
 	repo.requestsByDeviceCode[authorizePayload.DeviceCode] = sqlc.DeviceAuthRequests{
@@ -157,6 +157,26 @@ func TestRouterWiresDeviceVerifyRoute(t *testing.T) {
 	}
 	if cookies := callbackRR.Result().Cookies(); len(cookies) == 0 {
 		t.Fatal("callback response missing browser session cookie")
+	}
+}
+
+func TestRouterDeviceVerifyRouteNoLongerRendersHTMLForm(t *testing.T) {
+	repo := newRouterAuthRepo()
+	svc := authsvc.NewService(repo, noopOAuthClient{}, config.OAuthConfig{})
+	router := NewRouter(WithAuthService(svc))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/device/verify", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusBadRequest, rr.Body.String())
+	}
+	if got := rr.Header().Get("Content-Type"); strings.Contains(got, "text/html") {
+		t.Fatalf("content-type = %q, did not expect html", got)
+	}
+	if strings.Contains(strings.ToLower(rr.Body.String()), "<form") {
+		t.Fatalf("body unexpectedly contains html form: %s", rr.Body.String())
 	}
 }
 

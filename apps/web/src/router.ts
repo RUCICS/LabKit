@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import AdminLabsView from './views/AdminLabsView.vue';
 import AdminQueueView from './views/AdminQueueView.vue';
 import AuthConfirmView from './views/AuthConfirmView.vue';
+import DeviceAuthView from './views/DeviceAuthView.vue';
 import LabListView from './views/LabListView.vue';
 import ProfileView from './views/ProfileView.vue';
 import LeaderboardView from './views/LeaderboardView.vue';
@@ -22,6 +23,11 @@ export function createAppRouter(history = createWebHistory()) {
         props: (route) => ({
           labId: String(route.params.labID)
         })
+      },
+      {
+        path: '/auth/device',
+        name: 'auth-device',
+        component: DeviceAuthView
       },
       {
         path: '/auth/confirm',

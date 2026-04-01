@@ -23,7 +23,7 @@ const (
 	deviceAuthExpired      = "expired"
 	defaultDeviceAuthTTL   = 10 * time.Minute
 	defaultDeviceName      = "unknown"
-	defaultVerificationURL = "/api/device/verify"
+	defaultVerificationURL = "/auth/device"
 )
 
 var (
