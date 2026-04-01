@@ -3,10 +3,12 @@ package commands
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/mattn/go-runewidth"
 	"golang.org/x/term"
 	"labkit.local/apps/cli/internal/ui"
 )
@@ -15,10 +17,24 @@ const (
 	liveCursorUp   = "\x1b[4A" // move cursor up 4 lines (one per live block line)
 	liveClearLine  = "\r\x1b[2K"
 	liveClearToEnd = "\x1b[J"
-	liveBarWidth   = 24 // fallback / minimum bar width in characters
+	liveBarWidth   = 30 // fallback / minimum bar width in characters
 )
 
-var submitLiveSpinnerFrames = []string{"◐", "◓", "◑", "◒"}
+var submitLiveSpinnerFrames = spinnerFrames
+
+type submitBarColor struct {
+	r int
+	g int
+	b int
+}
+
+var (
+	submitLiveBarStart = submitBarColor{r: 122, g: 162, b: 247}
+	submitLiveBarEnd   = submitBarColor{r: 115, g: 218, b: 202}
+	submitLivePulse    = submitBarColor{r: 210, g: 245, b: 255}
+)
+
+var submitLiveThinLineGlyphs = []string{" ", "╶", "─"}
 
 var submitOutputIsTTY = func(out io.Writer) bool {
 	fdProvider, ok := out.(interface{ Fd() uintptr })
@@ -26,6 +42,13 @@ var submitOutputIsTTY = func(out io.Writer) bool {
 		return false
 	}
 	return term.IsTerminal(int(fdProvider.Fd()))
+}
+
+var submitLiveSupportsThinLineBlocks = func() bool {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("TERM")), "dumb") {
+		return false
+	}
+	return runewidth.StringWidth("╶") == 1 && runewidth.StringWidth("─") == 1
 }
 
 // submitLiveStages defines the 4 pipeline stages in display order.
@@ -73,8 +96,8 @@ func newSubmitLiveRenderer(out io.Writer, now func() time.Time, startedAt time.T
 			if computed := w/3 - 4; computed > liveBarWidth {
 				barWidth = computed
 			}
-			if barWidth > 48 {
-				barWidth = 48
+			if barWidth > 56 {
+				barWidth = 56
 			}
 		}
 	}
@@ -176,12 +199,7 @@ func (r *submitLiveRenderer) renderLines() [4]string {
 	// Line 2: progress bar — completedStages/totalStages (active stage not counted as done)
 	fraction := float64(stageIdx) / float64(len(submitLiveStages))
 	barWidth := r.barWidth
-	filled := int(fraction * float64(barWidth))
-	if filled > barWidth {
-		filled = barWidth
-	}
-	bar := theme.InfoStyle.Render(strings.Repeat("█", filled)) +
-		theme.MutedStyle.Render(strings.Repeat("░", barWidth-filled))
+	bar := renderAnimatedSubmitBar(theme, barWidth, fraction, r.frameIndex)
 	pct := int(fraction * 100)
 	line2 := fmt.Sprintf("  %s  %s", bar, theme.MutedStyle.Render(fmt.Sprintf("%d%%", pct)))
 
@@ -224,4 +242,149 @@ func (r *submitLiveRenderer) renderCurrentFrameLocked() error {
 		}
 	}
 	return nil
+}
+
+func renderAnimatedSubmitBar(theme ui.Theme, width int, fraction float64, frameIndex int) string {
+	if width <= 0 {
+		return ""
+	}
+	if fraction < 0 {
+		fraction = 0
+	}
+	if fraction > 1 {
+		fraction = 1
+	}
+	if !submitLiveSupportsThinLineBlocks() {
+		return renderFallbackSubmitBar(theme, width, fraction, frameIndex)
+	}
+
+	var b strings.Builder
+	totalSubcells := width * 2
+	filledSubcells := int(fraction * float64(totalSubcells))
+	if filledSubcells < 0 {
+		filledSubcells = 0
+	}
+	if filledSubcells > totalSubcells {
+		filledSubcells = totalSubcells
+	}
+	pulsePos := -1
+	if filledSubcells > 0 {
+		pulsePos = (frameIndex * 2) % filledSubcells
+	}
+
+	for cell := 0; cell < width; cell++ {
+		start := cell * 2
+		end := start + 2
+		subfilled := filledSubcells - start
+		if subfilled < 0 {
+			subfilled = 0
+		}
+		if subfilled > 2 {
+			subfilled = 2
+		}
+		if subfilled == 0 {
+			b.WriteString(theme.MutedStyle.Render("─"))
+			continue
+		}
+		position := float64(minInt(end, max(1, filledSubcells))) / float64(max(1, filledSubcells))
+		base := interpolateSubmitBarColor(submitLiveBarStart, submitLiveBarEnd, position)
+		if pulsePos >= 0 {
+			center := start + 1
+			distance := absInt(center - pulsePos)
+			switch {
+			case distance == 0:
+				base = blendSubmitBarColor(base, submitLivePulse, 0.62)
+			case distance <= 2:
+				base = blendSubmitBarColor(base, submitLivePulse, 0.34)
+			}
+		}
+		b.WriteString(renderSubmitThinLineCell(base, subfilled))
+	}
+	return b.String()
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func interpolateSubmitBarColor(start, end submitBarColor, t float64) submitBarColor {
+	if t < 0 {
+		t = 0
+	}
+	if t > 1 {
+		t = 1
+	}
+	return submitBarColor{
+		r: int(float64(start.r) + (float64(end.r-start.r) * t)),
+		g: int(float64(start.g) + (float64(end.g-start.g) * t)),
+		b: int(float64(start.b) + (float64(end.b-start.b) * t)),
+	}
+}
+
+func blendSubmitBarColor(base, highlight submitBarColor, strength float64) submitBarColor {
+	if strength < 0 {
+		strength = 0
+	}
+	if strength > 1 {
+		strength = 1
+	}
+	return submitBarColor{
+		r: int(float64(base.r)*(1-strength) + float64(highlight.r)*strength),
+		g: int(float64(base.g)*(1-strength) + float64(highlight.g)*strength),
+		b: int(float64(base.b)*(1-strength) + float64(highlight.b)*strength),
+	}
+}
+
+func renderSubmitThinLineCell(color submitBarColor, subfilled int) string {
+	if subfilled < 0 {
+		subfilled = 0
+	}
+	if subfilled > 2 {
+		subfilled = 2
+	}
+	glyph := submitLiveThinLineGlyphs[subfilled]
+	return fmt.Sprintf("\x1b[38;2;%d;%d;%dm%s\x1b[39m", color.r, color.g, color.b, glyph)
+}
+
+func renderFallbackSubmitBar(theme ui.Theme, width int, fraction float64, frameIndex int) string {
+	filled := int(fraction * float64(width))
+	if filled < 0 {
+		filled = 0
+	}
+	if filled > width {
+		filled = width
+	}
+	var b strings.Builder
+	pulsePos := -1
+	if filled > 0 {
+		pulsePos = frameIndex % filled
+	}
+	for i := 0; i < filled; i++ {
+		base := interpolateSubmitBarColor(submitLiveBarStart, submitLiveBarEnd, float64(i)/float64(max(1, filled-1)))
+		if pulsePos >= 0 && i == pulsePos {
+			base = blendSubmitBarColor(base, submitLivePulse, 0.58)
+		}
+		b.WriteString(fmt.Sprintf("\x1b[38;2;%d;%d;%dm─\x1b[39m", base.r, base.g, base.b))
+	}
+	for i := filled; i < width; i++ {
+		b.WriteString(theme.MutedStyle.Render("─"))
+	}
+	return b.String()
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func absInt(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
 }

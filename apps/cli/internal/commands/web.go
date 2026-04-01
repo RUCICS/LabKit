@@ -59,25 +59,35 @@ func runWeb(ctx context.Context, deps *Dependencies, redirectPath string) error 
 	if err != nil {
 		return err
 	}
+	waitSpinner := newLineSpinner(deps.Out, deps.IsTTY(), "Requesting browser session…")
+	if err := waitSpinner.Start(); err != nil {
+		return err
+	}
 	req, err := client.webSessionTicket(ctx, cfg, privateKey, redirectPath)
 	if err != nil {
+		_ = waitSpinner.Stop()
 		return err
 	}
 
 	var ticket webSessionTicketResponse
 	if err := client.doJSON(req, &ticket); err != nil {
+		_ = waitSpinner.Stop()
 		return err
 	}
 
 	targetURL, err := resolveWebRedirectURL(serverURL, ticket.RedirectURL)
 	if err != nil {
+		_ = waitSpinner.Stop()
 		return err
 	}
+	_ = waitSpinner.Update("Opening browser…")
 
 	if err := deps.OpenBrowser(targetURL); err != nil {
+		_ = waitSpinner.Stop()
 		fmt.Fprintf(deps.Out, "Could not open browser automatically: %v\nOpen this URL: %s\n", err, targetURL)
 		return nil
 	}
+	_ = waitSpinner.Stop()
 
 	fmt.Fprintln(deps.Out, "Opened browser session.")
 	return nil

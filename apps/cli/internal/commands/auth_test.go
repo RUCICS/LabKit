@@ -113,7 +113,7 @@ func TestAuthCommandCreatesNewServerKeyAndWritesKeyring(t *testing.T) {
 		"/custom/device/verify",
 		"Enter code:",
 		"ABCD-1234",
-		"◐ Waiting for authorization",
+		"Waiting for authorization",
 		"✓ Authorized",
 	} {
 		if !strings.Contains(stdout.String(), want) {

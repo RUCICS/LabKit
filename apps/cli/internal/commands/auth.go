@@ -145,16 +145,23 @@ func NewAuthCommand(deps *Dependencies) *cobra.Command {
 			fmt.Fprintln(deps.Out)
 			fmt.Fprintf(deps.Out, "  Enter code:  %s\n", theme.TitleStyle.Render(authorization.UserCode))
 			fmt.Fprintln(deps.Out)
-			fmt.Fprintln(deps.Out, "  "+theme.MutedStyle.Render("◐ Waiting for authorization…"))
 
 			pollInterval := deps.PollInterval
 			if pollInterval <= 0 {
 				pollInterval = time.Second
 			}
+			waitSpinner := newLineSpinner(deps.Out, deps.IsTTY(), "Waiting for authorization…")
+			if err := waitSpinner.Start(); err != nil {
+				return err
+			}
+			stopWaitSpinner := func() {
+				_ = waitSpinner.Stop()
+			}
 
 			for {
 				poll, err := client.devicePoll(cmd.Context(), authorization.DeviceCode)
 				if err != nil {
+					stopWaitSpinner()
 					return err
 				}
 				switch poll.Status {
@@ -165,10 +172,13 @@ func NewAuthCommand(deps *Dependencies) *cobra.Command {
 						time.Sleep(pollInterval)
 					}
 				case "approved":
+					stopWaitSpinner()
 					goto finished
 				case "expired":
+					stopWaitSpinner()
 					return fmt.Errorf("device authorization expired")
 				default:
+					stopWaitSpinner()
 					return fmt.Errorf("unexpected device authorization status %q", poll.Status)
 				}
 			}

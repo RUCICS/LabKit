@@ -827,15 +827,17 @@ func renderBoard(out io.Writer, lab manifest.PublicManifest, board boardResponse
 	}
 
 	const (
-		rankW    = 5
+		markerW  = 2
+		rankW    = 4
 		nickW    = 18
 		scoreW   = 8
 		updatedW = 8
 		gap      = "  "
 	)
-	rowWidth := rankW + len(gap) + nickW + len(gap) + scoreW + len(gap) + updatedW
+	rowWidth := markerW + rankW + len(gap) + nickW + len(gap) + scoreW + len(gap) + updatedW
 
-	header := ui.PadRight(theme.MutedStyle.Render("#"), rankW) + gap +
+	header := ui.PadRight("", markerW) +
+		ui.PadRight(theme.MutedStyle.Render("#"), rankW) + gap +
 		ui.PadRight(theme.MutedStyle.Render("NICKNAME"), nickW) + gap +
 		ui.PadRight(theme.MutedStyle.Render("SCORE"), scoreW) + gap +
 		theme.MutedStyle.Render("UPDATED")
@@ -862,20 +864,20 @@ func renderBoard(out io.Writer, lab manifest.PublicManifest, board boardResponse
 
 	now := time.Now()
 	for _, row := range board.Rows {
-		var rankStr string
+		markerStr := ""
 		if row.CurrentUser {
-			rankStr = fmt.Sprintf("→ %d", row.Rank)
-		} else {
-			switch row.Rank {
-			case 1:
-				rankStr = "🥇"
-			case 2:
-				rankStr = "🥈"
-			case 3:
-				rankStr = "🥉"
-			default:
-				rankStr = fmt.Sprintf("%d", row.Rank)
-			}
+			markerStr = "→"
+		}
+		var rankStr string
+		switch row.Rank {
+		case 1:
+			rankStr = "🥇"
+		case 2:
+			rankStr = "🥈"
+		case 3:
+			rankStr = "🥉"
+		default:
+			rankStr = fmt.Sprintf("%d", row.Rank)
 		}
 
 		scoreVal := float32(0)
@@ -905,11 +907,12 @@ func renderBoard(out io.Writer, lab manifest.PublicManifest, board boardResponse
 			bgColor = lipgloss.Color("#1e2030")
 		}
 
+		plainMarker := ui.PadRight(markerStr, markerW)
 		plainRank := ui.PadRight(rankStr, rankW)
 		plainNick := ui.PadRight(displayName, nickW)
 		plainScore := ui.PadRight(scoreStr, scoreW)
 		plainUpdated := ui.PadRight(updatedStr, updatedW)
-		plainRow := plainRank + gap + plainNick + gap + plainScore + gap + plainUpdated
+		plainRow := plainMarker + plainRank + gap + plainNick + gap + plainScore + gap + plainUpdated
 
 		fillFraction := 0.0
 		if maxScore > 0 {

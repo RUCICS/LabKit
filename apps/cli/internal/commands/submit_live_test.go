@@ -2,6 +2,8 @@ package commands
 
 import (
 	"bytes"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -32,6 +34,97 @@ func TestFormatSubmitLiveBlockContainsProgressBar(t *testing.T) {
 	barLine := stripANSIForTest(lines[2])
 	if !strings.Contains(barLine, "█") && !strings.Contains(barLine, "%") {
 		t.Fatalf("bar line = %q, want progress bar characters", barLine)
+	}
+}
+
+func TestFormatSubmitLiveBlockUsesThinLineGlyphsWhenSupported(t *testing.T) {
+	previous := submitLiveSupportsThinLineBlocks
+	submitLiveSupportsThinLineBlocks = func() bool { return true }
+	defer func() { submitLiveSupportsThinLineBlocks = previous }()
+
+	r := newSubmitLiveRenderer(nil, func() time.Time {
+		return time.Date(2026, 4, 1, 12, 0, 2, 0, time.UTC)
+	}, time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC), "queued")
+
+	barLine := stripANSIForTest(r.renderLines()[2])
+	if !strings.ContainsAny(barLine, "─╴") {
+		t.Fatalf("bar line = %q, want thin-line glyphs in hi-res mode", barLine)
+	}
+}
+
+func TestFormatSubmitLiveBlockProgressBarAnimatesAcrossFrames(t *testing.T) {
+	previous := submitLiveSupportsThinLineBlocks
+	submitLiveSupportsThinLineBlocks = func() bool { return true }
+	defer func() { submitLiveSupportsThinLineBlocks = previous }()
+
+	r := newSubmitLiveRenderer(nil, func() time.Time {
+		return time.Date(2026, 4, 1, 12, 0, 2, 0, time.UTC)
+	}, time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC), "running")
+
+	first := r.renderLines()[2]
+	r.frameIndex++
+	second := r.renderLines()[2]
+
+	if first == second {
+		t.Fatalf("bar line did not change across frames:\nfirst:  %q\nsecond: %q", first, second)
+	}
+}
+
+func TestFormatSubmitLiveBlockUsesGradientANSIStyling(t *testing.T) {
+	previous := submitLiveSupportsThinLineBlocks
+	submitLiveSupportsThinLineBlocks = func() bool { return true }
+	defer func() { submitLiveSupportsThinLineBlocks = previous }()
+
+	r := newSubmitLiveRenderer(nil, func() time.Time {
+		return time.Date(2026, 4, 1, 12, 0, 2, 0, time.UTC)
+	}, time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC), "running")
+
+	barLine := r.renderLines()[2]
+	if strings.Count(barLine, "\x1b[38;2;") < 4 {
+		t.Fatalf("bar line = %q, want multiple truecolor foreground segments for continuous gradient", barLine)
+	}
+}
+
+func TestFormatSubmitLiveBlockPulseHasNoticeableBrightnessContrast(t *testing.T) {
+	previous := submitLiveSupportsThinLineBlocks
+	submitLiveSupportsThinLineBlocks = func() bool { return true }
+	defer func() { submitLiveSupportsThinLineBlocks = previous }()
+
+	r := newSubmitLiveRenderer(nil, func() time.Time {
+		return time.Date(2026, 4, 1, 12, 0, 2, 0, time.UTC)
+	}, time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC), "running")
+
+	colors := extractTruecolorTriples(r.renderLines()[2])
+	if len(colors) == 0 {
+		t.Fatal("no truecolor segments found in progress bar")
+	}
+	minLum, maxLum := 1<<30, 0
+	for _, c := range colors {
+		lum := c[0] + c[1] + c[2]
+		if lum < minLum {
+			minLum = lum
+		}
+		if lum > maxLum {
+			maxLum = lum
+		}
+	}
+	if maxLum-minLum < 55 {
+		t.Fatalf("brightness contrast too subtle: min=%d max=%d diff=%d", minLum, maxLum, maxLum-minLum)
+	}
+}
+
+func TestFormatSubmitLiveBlockFallsBackWithoutThinLineSupport(t *testing.T) {
+	previous := submitLiveSupportsThinLineBlocks
+	submitLiveSupportsThinLineBlocks = func() bool { return false }
+	defer func() { submitLiveSupportsThinLineBlocks = previous }()
+
+	r := newSubmitLiveRenderer(nil, func() time.Time {
+		return time.Date(2026, 4, 1, 12, 0, 2, 0, time.UTC)
+	}, time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC), "running")
+
+	barLine := stripANSIForTest(r.renderLines()[2])
+	if strings.ContainsAny(barLine, "╴") {
+		t.Fatalf("bar line = %q, want fallback renderer without thin-line partial glyphs", barLine)
 	}
 }
 
@@ -103,4 +196,17 @@ func stripANSIForTest(s string) string {
 		i++
 	}
 	return out.String()
+}
+
+func extractTruecolorTriples(s string) [][3]int {
+	re := regexp.MustCompile(`\x1b\[38;2;([0-9]+);([0-9]+);([0-9]+)m`)
+	matches := re.FindAllStringSubmatch(s, -1)
+	out := make([][3]int, 0, len(matches))
+	for _, m := range matches {
+		r, _ := strconv.Atoi(m[1])
+		g, _ := strconv.Atoi(m[2])
+		b, _ := strconv.Atoi(m[3])
+		out = append(out, [3]int{r, g, b})
+	}
+	return out
 }

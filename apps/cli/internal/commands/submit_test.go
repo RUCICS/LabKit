@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mattn/go-runewidth"
 	"labkit.local/apps/cli/internal/config"
 	keycrypto "labkit.local/apps/cli/internal/crypto"
 	"labkit.local/packages/go/auth"
@@ -191,6 +192,49 @@ func TestRenderBoardHighlightsCurrentUserRow(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("renderBoard() = %q, missing %q", got, want)
 		}
+	}
+}
+
+func TestRenderBoardKeepsMedalForCurrentUserTopThree(t *testing.T) {
+	var buf bytes.Buffer
+	lab := manifest.PublicManifest{}
+	board := boardResponse{
+		SelectedMetric: "score",
+		Metrics:        []boardMetricResponse{{ID: "score", Name: "score"}},
+		Rows: []boardRowResponse{
+			{Rank: 1, Nickname: "alice", CurrentUser: true, Scores: []boardScoreResponse{{MetricID: "score", Value: 95.5}}, UpdatedAt: time.Now().Add(-2 * time.Hour)},
+			{Rank: 2, Nickname: "bob", Scores: []boardScoreResponse{{MetricID: "score", Value: 80.0}}, UpdatedAt: time.Now().Add(-1 * time.Hour)},
+		},
+	}
+	if err := renderBoard(&buf, lab, board); err != nil {
+		t.Fatalf("error = %v", err)
+	}
+
+	plain := stripANSIForTest(buf.String())
+	if !strings.Contains(plain, "→") {
+		t.Fatalf("renderBoard() plain = %q, want current-user marker", plain)
+	}
+	if !strings.Contains(plain, "🥇") {
+		t.Fatalf("renderBoard() plain = %q, want medal retained for top-three current user", plain)
+	}
+
+	lines := strings.Split(plain, "\n")
+	var aliceLine, bobLine string
+	for _, line := range lines {
+		switch {
+		case strings.Contains(line, "you (alice)"):
+			aliceLine = line
+		case strings.Contains(line, "bob"):
+			bobLine = line
+		}
+	}
+	if aliceLine == "" || bobLine == "" {
+		t.Fatalf("renderBoard() plain = %q, want both alice and bob rows", plain)
+	}
+	alicePrefixWidth := runewidth.StringWidth(strings.SplitN(aliceLine, "you (alice)", 2)[0])
+	bobPrefixWidth := runewidth.StringWidth(strings.SplitN(bobLine, "bob", 2)[0])
+	if alicePrefixWidth != bobPrefixWidth {
+		t.Fatalf("nickname columns misaligned:\nalice: %q\nbob:   %q", aliceLine, bobLine)
 	}
 }
 

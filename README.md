@@ -75,6 +75,18 @@ Build or run the CLI directly:
 go run ./apps/cli/cmd/labkit --help
 ```
 
+Build portable binaries:
+
+```bash
+bash scripts/build-cli.sh
+```
+
+Or build a narrower target set:
+
+```bash
+bash scripts/build-cli.sh linux/amd64 darwin/arm64
+```
+
 Common commands:
 
 ```bash
