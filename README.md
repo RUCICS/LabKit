@@ -65,14 +65,21 @@ Then set at least:
 - `LABKIT_SITE_ADDRESS` to your public host, for example `lab.ics.astralis.icu`
 - `LABKIT_HTTP_PORT=80`
 - `LABKIT_HTTPS_PORT=443`
+- `LABKIT_AUTH_PROVIDER=cas_ruc`
 - `LABKIT_OAUTH_CLIENT_ID` and `LABKIT_OAUTH_CLIENT_SECRET` to the values issued by the school
 - `LABKIT_OAUTH_REDIRECT_URL=https://<your-host>/api/device/verify`
+- `LABKIT_OAUTH_DEVICE_AUTH_TTL=15m`
 
-The current production OAuth wiring expects:
+The current production auth wiring is provider-based:
 
-- authorize URL: `https://cas.ruc.edu.cn/cas/oauth2.0/authorize`
-- token URL: `https://cas.ruc.edu.cn/cas/oauth2.0/accessToken`
-- profile URL: `https://cas.ruc.edu.cn/cas/oauth2.0/user/profiles`
+- `cas_ruc` uses:
+  - authorize URL: `https://cas.ruc.edu.cn/cas/oauth2.0/authorize`
+  - token URL: `https://cas.ruc.edu.cn/cas/oauth2.0/accessToken`
+  - profile URL: `https://cas.ruc.edu.cn/cas/oauth2.0/user/profiles`
+- `school_devcenter` uses the standard authorize/token pair plus:
+  - user URL: `https://<auth-host>/apis/oauth2/v1/user`
+  - profile URL: `https://<auth-host>/apis/oauth2/v1/profile`
+  - scope: usually `profile` or `all`
 
 The school-side OAuth application must register the same HTTPS callback URL. Caddy now supports both HTTP and HTTPS in Compose and will terminate TLS directly when `LABKIT_SITE_ADDRESS` is set to your real domain.
 
@@ -180,7 +187,7 @@ Signed CLI requests now use `X-LabKit-Key-Fingerprint` instead of `X-LabKit-Key-
 
 Important local auth note:
 
-- `labkit auth` expects the OAuth device flow.
+- `labkit auth` expects the configured OAuth provider's device flow.
 - For pure local development without a real OAuth provider, the repo still relies on the dev-only `/api/dev/device/bind` shortcut used by tests and e2e.
 - To expose that shortcut, set `LABKIT_DEV_MODE=true` in `deploy/.env` before starting the stack.
 

@@ -49,12 +49,15 @@ services:
       LABKIT_ADMIN_TOKEN: ${LABKIT_ADMIN_TOKEN:-dev-admin-token}
       LABKIT_ARTIFACT_ROOT: ${LABKIT_ARTIFACT_ROOT:-/var/lib/labkit/artifacts}
       LABKIT_DEV_MODE: ${LABKIT_DEV_MODE:-false}
+      LABKIT_AUTH_PROVIDER: ${LABKIT_AUTH_PROVIDER:-cas_ruc}
       LABKIT_OAUTH_CLIENT_ID: ${LABKIT_OAUTH_CLIENT_ID:-dev-client-id}
       LABKIT_OAUTH_CLIENT_SECRET: ${LABKIT_OAUTH_CLIENT_SECRET:-dev-client-secret}
       LABKIT_OAUTH_REDIRECT_URL: ${LABKIT_OAUTH_REDIRECT_URL:-http://localhost:8080/api/device/verify}
       LABKIT_OAUTH_AUTHORIZE_URL: ${LABKIT_OAUTH_AUTHORIZE_URL:-https://example.invalid/oauth/authorize}
       LABKIT_OAUTH_TOKEN_URL: ${LABKIT_OAUTH_TOKEN_URL:-https://example.invalid/oauth/token}
+      LABKIT_OAUTH_USER_URL: ${LABKIT_OAUTH_USER_URL:-}
       LABKIT_OAUTH_PROFILE_URL: ${LABKIT_OAUTH_PROFILE_URL:-https://example.invalid/oauth/profile}
+      LABKIT_OAUTH_SCOPE: ${LABKIT_OAUTH_SCOPE:-}
       LABKIT_OAUTH_DEVICE_AUTH_TTL: ${LABKIT_OAUTH_DEVICE_AUTH_TTL:-15m}
     volumes:
       - artifacts-data:${LABKIT_ARTIFACT_ROOT:-/var/lib/labkit/artifacts}

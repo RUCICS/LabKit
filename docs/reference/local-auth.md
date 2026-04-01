@@ -137,6 +137,34 @@ Admin 现在不是 OAuth，也不是课程组账号体系，而是一个全局 t
 
 ## 5. 没接真实 OAuth 时，怎么做本地认证
 
+当前 `deploy/.env.example` 和 `deploy/.env.prod.example` 已经切到 provider-based auth 配置。默认是 `cas_ruc`，所以模板里现在会看到：
+
+```env
+LABKIT_AUTH_PROVIDER=cas_ruc
+LABKIT_OAUTH_CLIENT_ID=...
+LABKIT_OAUTH_CLIENT_SECRET=...
+LABKIT_OAUTH_REDIRECT_URL=...
+LABKIT_OAUTH_AUTHORIZE_URL=...
+LABKIT_OAUTH_TOKEN_URL=...
+LABKIT_OAUTH_PROFILE_URL=...
+LABKIT_OAUTH_DEVICE_AUTH_TTL=15m
+```
+
+如果以后切到 `school_devcenter`，还需要补：
+
+```env
+LABKIT_OAUTH_USER_URL=https://<auth-host>/apis/oauth2/v1/user
+LABKIT_OAUTH_PROFILE_URL=https://<auth-host>/apis/oauth2/v1/profile
+LABKIT_OAUTH_SCOPE=profile
+```
+
+其中 `school_devcenter` 当前实现是：
+
+- `POST /oauth2/token` 用 `application/x-www-form-urlencoded`
+- `Authorization: Basic <base64(client_id:client_secret)>` 换 token
+- 后续用 `Authorization: Bearer <access_token>` 拉 `user/profile`
+- `StudentID` 优先从 `profile.profiles[].stno` 提取
+
 在没有学校 OAuth 的情况下，本地开发依赖 dev-only 的快捷绑定接口：
 
 - `POST /api/dev/device/bind`
