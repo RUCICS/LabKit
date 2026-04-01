@@ -2,7 +2,18 @@
 
 ## Context
 
-This document captures the agreed formal-product design for LabKit. It is not an MVP plan. The target is a production-quality, single-instance platform for a long-running ICS course.
+This document captures the agreed formal-product design for LabKit and annotates it with the current repository reality as of 2026-04-01. It is still the high-level target for a single-instance ICS platform, but the notes below distinguish implemented behavior from the original release intent.
+
+## Implementation Snapshot
+
+- The repo now contains the four planned apps: API, worker, CLI, and web.
+- The checked-in compose stack now builds and runs the real API, worker, web, migration, PostgreSQL, and Caddy services.
+- The source-run dev flow remains available for direct local debugging, but it is no longer the only real execution path.
+- Dev-only support remains available for targeted local debugging:
+  - `LABKIT_DEV_MODE=true` enables the `/api/dev/device/bind` shortcut for local device binding.
+  - `LABKIT_WORKER_DEV_FAKE_EVALUATION=true` plus `LABKIT_WORKER_RUN_ONCE=true` enables a one-shot fake-evaluation worker flow when explicitly requested.
+- Current verification status on 2026-04-01:
+  - `go test ./...`, `cd apps/web && npm test`, `bash db/migrations/schema_smoke_test.sh`, `bash scripts/deploy_smoke_test.sh`, and `bash scripts/e2e-happy-path.sh` pass.
 
 ## Product Scope
 
@@ -26,9 +37,12 @@ Core product principles:
 - Database: PostgreSQL 18
 - Frontend: Vue 3 + Vite + TypeScript
 - CLI: Go + Cobra
-- Deployment: Docker Compose on a single Linux host
+- Deployment target: Docker Compose on a single Linux host
 - Artifact storage: local filesystem directory
 - Evaluation execution: Docker containers started by a dedicated worker
+
+Current implementation caveat:
+- The real Docker evaluator path is now wired by default. The dev-fake worker path remains only as an opt-in debug path.
 
 Important database choice:
 - Use PostgreSQL 18 instead of SQLite
@@ -47,8 +61,9 @@ Runtime components:
 
 Responsibilities:
 - API accepts requests, validates auth and manifest rules, persists submissions, exposes board/history/admin endpoints
-- Worker consumes evaluation jobs, runs Docker evaluators, validates results, updates scores and leaderboard
-- Frontend provides public leaderboard pages, OAuth confirmation UI, user self-service pages, and admin pages
+- Compose now starts the same core services used by local verification: postgres, migrate, API, worker, web, and Caddy
+- Worker verification now uses the real Docker evaluator runtime by default; dev fake evaluation is opt-in only
+- Frontend provides public leaderboard pages, OAuth confirmation UI, key inventory, and admin pages for lab registration and queue inspection
 
 Explicit non-goals:
 - No microservice split
@@ -173,7 +188,7 @@ Student-facing pages:
 - Lab list / home
 - Public leaderboard page
 - Device authorization confirmation page
-- Personal self-service page for keys, recent submissions, nickname, and track
+- Personal page for key inventory
 
 Admin pages:
 - Lab management
@@ -281,6 +296,15 @@ Initial observability stance:
 - Strong structured logs and admin pages first
 - Do not require a full metrics stack on day one
 
+## Verification Reality
+
+The current repository supports the full verification checklist from Task 26, and the Docker-backed commands now pass in this workspace:
+
+- `bash db/migrations/schema_smoke_test.sh`
+- `bash scripts/e2e-happy-path.sh`
+
+The earlier controller note about Docker daemon access was a transient environment issue, not a repository defect.
+
 ## First Formal Release Scope
 
 Must ship:
@@ -306,4 +330,4 @@ Must not expand into:
 
 ## Outcome
 
-This design defines LabKit as a formal, production-quality single-course platform with clear auth boundaries, auditable evaluation, manifest-driven customization, and a restrained but complete operational scope.
+This design defines LabKit as a single-course platform with clear auth boundaries, auditable evaluation, manifest-driven customization, and a restrained operational scope. The current repo now covers the planned app surfaces, real compose deployment path, and real evaluator runtime, while still keeping a small set of explicit dev-only shortcuts for local debugging.

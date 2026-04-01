@@ -6,9 +6,43 @@
 
 **Architecture:** Use a monorepo with deployable apps for API, worker, CLI, and web, plus shared Go domain packages and PostgreSQL-backed job queue semantics. Keep evaluation execution in a dedicated worker process and refresh leaderboard state transactionally with scoring results.
 
-**Tech Stack:** Go 1.24+, chi, pgx, sqlc, golang-migrate, PostgreSQL 18, Cobra, Vue 3, Vite, Pinia, TypeScript, Docker Compose
+**Tech Stack:** Go 1.26 + toolchain go1.26.1, chi, pgx, sqlc, golang-migrate, PostgreSQL 18, Cobra, Vue 3, Vite, Pinia, TypeScript, Docker Compose
 
 ---
+
+## Completion Snapshot
+
+As of 2026-04-01, Tasks 1-25 are materially present in the repository. Task 26 is the documentation and final verification pass, plus any narrow integration fixes needed to make the required verification commands reflect reality.
+
+Key as-built notes:
+
+- The repository remains a multi-module Go workspace. Task 26 adds a root-level verification harness so the required `go test ./...` command is meaningful from repo root.
+- The checked-in compose stack now builds and runs the real API, worker, web, migration, PostgreSQL, and Caddy services.
+- The source-run dev flow remains available for direct local debugging.
+- Dev-only support is still available when explicitly enabled:
+  - `LABKIT_DEV_MODE=true` enables `/api/dev/device/bind`
+  - `LABKIT_WORKER_DEV_FAKE_EVALUATION=true` and `LABKIT_WORKER_RUN_ONCE=true` enable one-shot fake evaluation
+- The worker verification path now uses the real Docker evaluation runtime by default.
+
+## Failing Verification Checklist
+
+Task 26 verification pass on 2026-04-01:
+
+- [x] `go test ./...`
+- [x] `cd apps/web && npm test`
+- [x] `bash db/migrations/schema_smoke_test.sh`
+- [x] `bash scripts/deploy_smoke_test.sh`
+- [x] `bash scripts/e2e-happy-path.sh`
+
+## Current Verification Status
+
+Status after the Task 26 pass:
+
+- [x] `go test ./...`
+- [x] `cd apps/web && npm test`
+- [x] `bash db/migrations/schema_smoke_test.sh`
+- [x] `bash scripts/deploy_smoke_test.sh`
+- [x] `bash scripts/e2e-happy-path.sh`
 
 ### Task 1: Bootstrap Repository Structure
 
@@ -961,7 +995,7 @@ git commit -m "test: add end-to-end happy path verification"
 
 **Step 1: Write the failing verification checklist**
 
-Document the commands that must pass before completion.
+Document the commands that must pass before completion and record the initial failing pass.
 
 **Step 2: Run verification suite**
 
@@ -976,11 +1010,11 @@ Expected: all pass.
 
 **Step 3: Fix remaining issues**
 
-Address any final integration gaps uncovered by the verification suite.
+Address any final integration gaps uncovered by the verification suite. In the current repo snapshot, that included adding a root workspace verifier so `go test ./...` works from repo root.
 
 **Step 4: Update docs**
 
-Refresh the README with local setup, architecture overview, and key operational commands.
+Refresh the README with local setup, architecture overview, key operational commands, current verification status, and environment caveats.
 
 **Step 5: Commit**
 
