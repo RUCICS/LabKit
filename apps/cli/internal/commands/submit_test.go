@@ -151,7 +151,7 @@ func TestRenderSubmissionFinalFailedContainsErrorAccent(t *testing.T) {
 	}
 }
 
-func TestRenderBoardShowsMedalsAndBgFill(t *testing.T) {
+func TestRenderBoardShowsRankBadgesAndBgFill(t *testing.T) {
 	var buf bytes.Buffer
 	lab := manifest.PublicManifest{}
 	board := boardResponse{
@@ -165,10 +165,15 @@ func TestRenderBoardShowsMedalsAndBgFill(t *testing.T) {
 	if err := renderBoard(&buf, lab, board); err != nil {
 		t.Fatalf("error = %v", err)
 	}
-	got := buf.String()
-	for _, want := range []string{"🥇", "alice", "95.5", "bob", "ago"} {
-		if !strings.Contains(got, want) {
-			t.Fatalf("renderBoard() = %q, missing %q", got, want)
+	plain := stripANSIForTest(buf.String())
+	for _, want := range []string{"1ST", "alice", "95.5", "2ND", "bob", "ago"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("renderBoard() plain = %q, missing %q", plain, want)
+		}
+	}
+	for _, unwanted := range []string{"🥇", "🥈", "🥉"} {
+		if strings.Contains(plain, unwanted) {
+			t.Fatalf("renderBoard() plain = %q, want no emoji rank markers", plain)
 		}
 	}
 }
@@ -188,14 +193,17 @@ func TestRenderBoardHighlightsCurrentUserRow(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 	got := buf.String()
-	for _, want := range []string{"→", "you (huanc)", "88.3"} {
+	for _, want := range []string{"you (huanc)", "88.3"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("renderBoard() = %q, missing %q", got, want)
 		}
 	}
+	if strings.Contains(stripANSIForTest(got), "▏") {
+		t.Fatalf("renderBoard() plain = %q, want no dedicated current-user marker", stripANSIForTest(got))
+	}
 }
 
-func TestRenderBoardKeepsMedalForCurrentUserTopThree(t *testing.T) {
+func TestRenderBoardKeepsBadgeForCurrentUserTopThree(t *testing.T) {
 	var buf bytes.Buffer
 	lab := manifest.PublicManifest{}
 	board := boardResponse{
@@ -211,11 +219,14 @@ func TestRenderBoardKeepsMedalForCurrentUserTopThree(t *testing.T) {
 	}
 
 	plain := stripANSIForTest(buf.String())
-	if !strings.Contains(plain, "→") {
-		t.Fatalf("renderBoard() plain = %q, want current-user marker", plain)
+	if !strings.Contains(plain, "1ST") {
+		t.Fatalf("renderBoard() plain = %q, want rank badge retained for top-three current user", plain)
 	}
-	if !strings.Contains(plain, "🥇") {
-		t.Fatalf("renderBoard() plain = %q, want medal retained for top-three current user", plain)
+	if strings.Contains(plain, "▏") {
+		t.Fatalf("renderBoard() plain = %q, want no dedicated current-user marker", plain)
+	}
+	if strings.Contains(plain, "🥇") {
+		t.Fatalf("renderBoard() plain = %q, want emoji medal removed", plain)
 	}
 
 	lines := strings.Split(plain, "\n")
@@ -888,7 +899,7 @@ func TestBoardCommandDisplaysRowsByRequestedMetric(t *testing.T) {
 	if !strings.Contains(stdout.String(), "Leaderboard") {
 		t.Fatalf("stdout = %q, want structured board heading", stdout.String())
 	}
-	for _, want := range []string{"sorted by latency", "Throughput", "Latency", "🥇", "🥈", "ago"} {
+	for _, want := range []string{"sorted by latency", "Throughput", "Latency", "1ST", "2ND", "ago"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 		}
@@ -962,10 +973,13 @@ func TestBoardCommandUsesSignedRequestAndHighlightsCurrentUser(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 
-	for _, want := range []string{"→", "you (Bob)", "sorted by latency"} {
+	for _, want := range []string{"you (Bob)", "sorted by latency"} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 		}
+	}
+	if strings.Contains(stripANSIForTest(stdout.String()), "▏") {
+		t.Fatalf("stdout = %q, want no dedicated current-user marker", stdout.String())
 	}
 }
 

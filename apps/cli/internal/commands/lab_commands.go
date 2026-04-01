@@ -827,17 +827,15 @@ func renderBoard(out io.Writer, lab manifest.PublicManifest, board boardResponse
 	}
 
 	const (
-		markerW  = 2
-		rankW    = 4
+		rankW    = 5
 		nickW    = 18
 		scoreW   = 8
 		updatedW = 8
 		gap      = "  "
 	)
-	rowWidth := markerW + rankW + len(gap) + nickW + len(gap) + scoreW + len(gap) + updatedW
+	rowWidth := rankW + len(gap) + nickW + len(gap) + scoreW + len(gap) + updatedW
 
-	header := ui.PadRight("", markerW) +
-		ui.PadRight(theme.MutedStyle.Render("#"), rankW) + gap +
+	header := ui.PadRight(theme.MutedStyle.Render("#"), rankW) + gap +
 		ui.PadRight(theme.MutedStyle.Render("NICKNAME"), nickW) + gap +
 		ui.PadRight(theme.MutedStyle.Render("SCORE"), scoreW) + gap +
 		theme.MutedStyle.Render("UPDATED")
@@ -864,22 +862,6 @@ func renderBoard(out io.Writer, lab manifest.PublicManifest, board boardResponse
 
 	now := time.Now()
 	for _, row := range board.Rows {
-		markerStr := ""
-		if row.CurrentUser {
-			markerStr = "→"
-		}
-		var rankStr string
-		switch row.Rank {
-		case 1:
-			rankStr = "🥇"
-		case 2:
-			rankStr = "🥈"
-		case 3:
-			rankStr = "🥉"
-		default:
-			rankStr = fmt.Sprintf("%d", row.Rank)
-		}
-
 		scoreVal := float32(0)
 		for _, s := range row.Scores {
 			if s.MetricID == board.SelectedMetric {
@@ -907,19 +889,17 @@ func renderBoard(out io.Writer, lab manifest.PublicManifest, board boardResponse
 			bgColor = lipgloss.Color("#1e2030")
 		}
 
-		plainMarker := ui.PadRight(markerStr, markerW)
-		plainRank := ui.PadRight(rankStr, rankW)
-		plainNick := ui.PadRight(displayName, nickW)
-		plainScore := ui.PadRight(scoreStr, scoreW)
-		plainUpdated := ui.PadRight(updatedStr, updatedW)
-		plainRow := plainMarker + plainRank + gap + plainNick + gap + plainScore + gap + plainUpdated
+		renderedRank := renderBoardRankBadge(theme, row.Rank)
+		restRow := ui.PadRight(displayName, nickW) + gap +
+			ui.PadRight(scoreStr, scoreW) + gap +
+			ui.PadRight(updatedStr, updatedW)
 
 		fillFraction := 0.0
 		if maxScore > 0 {
 			fillFraction = float64(scoreVal) / float64(maxScore)
 		}
 
-		rendered := "  " + ui.BgFillRow(plainRow, fillFraction, fgColor, bgColor)
+		rendered := "  " + renderedRank + gap + ui.BgFillRow(restRow, fillFraction, fgColor, bgColor)
 		if _, err := fmt.Fprintln(out, rendered); err != nil {
 			return err
 		}
@@ -1014,6 +994,34 @@ func renderHistory(out io.Writer, history historyResponse) error {
 	}
 	_, err := fmt.Fprintln(out, count)
 	return err
+}
+
+func renderBoardRankBadge(theme ui.Theme, rank int) string {
+	switch rank {
+	case 1:
+		return lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#0f111a")).
+			Background(lipgloss.Color("#e0af68")).
+			Padding(0, 1).
+			Render("1ST")
+	case 2:
+		return lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#0f111a")).
+			Background(lipgloss.Color("#b7c1d3")).
+			Padding(0, 1).
+			Render("2ND")
+	case 3:
+		return lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#0f111a")).
+			Background(lipgloss.Color("#c8925b")).
+			Padding(0, 1).
+			Render("3RD")
+	default:
+		return ui.PadRight(theme.MutedStyle.Render(fmt.Sprintf("%d", rank)), 5)
+	}
 }
 
 func formatScore(value float32, unit string) string {
