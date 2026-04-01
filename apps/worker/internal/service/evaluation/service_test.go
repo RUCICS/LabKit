@@ -195,6 +195,27 @@ func TestPersistLatestScoredSubmissionReplacesLeaderboardPointer(t *testing.T) {
 	}
 }
 
+func TestMarkRunningUpdatesSubmissionStatusAndStartedAt(t *testing.T) {
+	repo := newFakeRepository()
+	svc := newTestService(repo)
+	submission := seededSubmission("66666666-6666-7666-8666-666666666666", 7, "sorting")
+	submission.Status = "queued"
+	repo.submissions[submission.ID] = submission
+	startedAt := time.Date(2026, 3, 31, 13, 30, 0, 0, time.UTC)
+
+	if err := svc.MarkRunning(context.Background(), submission.ID, startedAt); err != nil {
+		t.Fatalf("MarkRunning() error = %v", err)
+	}
+
+	stored := repo.submissions[submission.ID]
+	if stored.Status != "running" {
+		t.Fatalf("submission status = %q, want %q", stored.Status, "running")
+	}
+	if !stored.StartedAt.Valid || !stored.StartedAt.Time.Equal(startedAt) {
+		t.Fatalf("submission started_at = %v, want %v", stored.StartedAt, startedAt)
+	}
+}
+
 func newTestService(repo *fakeRepository) *Service {
 	svc := NewService(repo)
 	svc.now = func() time.Time { return repo.now }
@@ -279,6 +300,14 @@ func (r *fakeRepository) BeginTx(context.Context) (Tx, error) {
 	return tx, nil
 }
 
+func (r *fakeRepository) UpdateSubmissionRunning(_ context.Context, arg sqlc.UpdateSubmissionRunningParams) error {
+	row := r.submissions[arg.ID]
+	row.Status = arg.Status
+	row.StartedAt = arg.StartedAt
+	r.submissions[arg.ID] = row
+	return nil
+}
+
 type fakeTx struct {
 	repo             *fakeRepository
 	updateCalls      int
@@ -356,4 +385,5 @@ var _ interface {
 
 var _ interface {
 	BeginTx(context.Context) (Tx, error)
+	UpdateSubmissionRunning(context.Context, sqlc.UpdateSubmissionRunningParams) error
 } = (*fakeRepository)(nil)

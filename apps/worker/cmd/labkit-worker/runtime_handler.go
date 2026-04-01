@@ -36,6 +36,7 @@ type jobAcknowledger interface {
 }
 
 type resultPersister interface {
+	MarkRunning(context.Context, uuid.UUID, time.Time) error
 	Persist(context.Context, evaluation.PersistInput) error
 }
 
@@ -70,6 +71,9 @@ func (h *runtimeHandler) Handle(ctx context.Context, job *sqlc.EvaluationJobs) e
 	startedAt := h.timestamp()
 	submission, parsed, err := h.loadSubmission(ctx, job.SubmissionID)
 	if err != nil {
+		return err
+	}
+	if err := h.persister.MarkRunning(ctx, submission.ID, startedAt); err != nil {
 		return err
 	}
 

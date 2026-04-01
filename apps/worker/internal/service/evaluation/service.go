@@ -16,12 +16,14 @@ import (
 )
 
 const (
-	submissionStatusDone  = string(labkit.SubmissionStatusDone)
-	submissionStatusError = string(labkit.SubmissionStatusError)
+	submissionStatusRunning = string(labkit.SubmissionStatusRunning)
+	submissionStatusDone    = string(labkit.SubmissionStatusDone)
+	submissionStatusError   = string(labkit.SubmissionStatusError)
 )
 
 type Repository interface {
 	BeginTx(context.Context) (Tx, error)
+	UpdateSubmissionRunning(context.Context, sqlc.UpdateSubmissionRunningParams) error
 }
 
 type Tx interface {
@@ -51,6 +53,17 @@ func NewService(repo Repository) *Service {
 		repo: repo,
 		now:  time.Now,
 	}
+}
+
+func (s *Service) MarkRunning(ctx context.Context, submissionID uuid.UUID, startedAt time.Time) error {
+	if s == nil || s.repo == nil {
+		return fmt.Errorf("evaluation service: repository is required")
+	}
+	return s.repo.UpdateSubmissionRunning(ctx, sqlc.UpdateSubmissionRunningParams{
+		ID:        submissionID,
+		Status:    submissionStatusRunning,
+		StartedAt: timestamptzValue(startedAt),
+	})
 }
 
 func (s *Service) Persist(ctx context.Context, in PersistInput) (err error) {

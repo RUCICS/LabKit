@@ -268,3 +268,21 @@ func (q *Queries) UpdateSubmissionResult(ctx context.Context, arg UpdateSubmissi
 	)
 	return err
 }
+
+const updateSubmissionRunning = `-- name: UpdateSubmissionRunning :exec
+UPDATE submissions
+SET status = $2,
+    started_at = $3
+WHERE id = $1
+`
+
+type UpdateSubmissionRunningParams struct {
+	ID        uuid.UUID          `json:"id"`
+	Status    string             `json:"status"`
+	StartedAt pgtype.Timestamptz `json:"started_at"`
+}
+
+func (q *Queries) UpdateSubmissionRunning(ctx context.Context, arg UpdateSubmissionRunningParams) error {
+	_, err := q.db.Exec(ctx, updateSubmissionRunning, arg.ID, arg.Status, arg.StartedAt)
+	return err
+}

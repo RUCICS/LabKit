@@ -25,6 +25,10 @@ func (r *repo) BeginTx(ctx context.Context) (Tx, error) {
 	return &storeTx{tx: tx, queries: sqlc.New(tx)}, nil
 }
 
+func (r *repo) UpdateSubmissionRunning(ctx context.Context, arg sqlc.UpdateSubmissionRunningParams) error {
+	return sqlc.New(r.pool).UpdateSubmissionRunning(ctx, arg)
+}
+
 type storeTx struct {
 	tx      pgx.Tx
 	queries *sqlc.Queries

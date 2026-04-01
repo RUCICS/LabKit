@@ -41,6 +41,12 @@ SET status = $2,
     finished_at = $8
 WHERE id = $1;
 
+-- name: UpdateSubmissionRunning :exec
+UPDATE submissions
+SET status = $2,
+    started_at = $3
+WHERE id = $1;
+
 -- name: CreateScore :exec
 INSERT INTO scores (submission_id, metric_id, value)
 VALUES ($1, $2, $3)

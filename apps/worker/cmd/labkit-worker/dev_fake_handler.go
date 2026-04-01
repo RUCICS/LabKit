@@ -37,6 +37,9 @@ func (h *devFakeHandler) Handle(ctx context.Context, job *sqlc.EvaluationJobs) e
 	if err != nil {
 		return err
 	}
+	if err := h.persister.MarkRunning(ctx, submission.ID, startedAt); err != nil {
+		return err
+	}
 	labRow, err := h.queries.GetLab(ctx, submission.LabID)
 	if err != nil {
 		return err

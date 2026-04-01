@@ -87,6 +87,15 @@ func TestRuntimeHandlerPersistsScoredResultAndAcknowledgesDone(t *testing.T) {
 		t.Fatalf("Handle() error = %v", err)
 	}
 
+	if persister.markRunningCalls != 1 {
+		t.Fatalf("markRunningCalls = %d, want 1", persister.markRunningCalls)
+	}
+	if persister.runningSubmissionID != submissionID {
+		t.Fatalf("running submission id = %v, want %v", persister.runningSubmissionID, submissionID)
+	}
+	if got := persister.runningStartedAt; !got.Equal(time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)) {
+		t.Fatalf("running started_at = %v, want fixed test time", got)
+	}
 	if queue.status != jobs.StatusDone {
 		t.Fatalf("ack status = %q, want %q", queue.status, jobs.StatusDone)
 	}
@@ -251,7 +260,17 @@ func (q *fakeRuntimeQueue) Acknowledge(_ context.Context, _ uuid.UUID, _ string,
 }
 
 type fakeRuntimePersister struct {
-	input evaluation.PersistInput
+	input               evaluation.PersistInput
+	markRunningCalls    int
+	runningSubmissionID uuid.UUID
+	runningStartedAt    time.Time
+}
+
+func (p *fakeRuntimePersister) MarkRunning(_ context.Context, submissionID uuid.UUID, startedAt time.Time) error {
+	p.markRunningCalls++
+	p.runningSubmissionID = submissionID
+	p.runningStartedAt = startedAt
+	return nil
 }
 
 func (p *fakeRuntimePersister) Persist(_ context.Context, input evaluation.PersistInput) error {
