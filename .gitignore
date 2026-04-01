@@ -9,7 +9,7 @@ tmp/
 *.db
 *.sqlite3
 artifacts/
-labkit-worker
+/labkit-worker
 
 .env
 __pycache__/
