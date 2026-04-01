@@ -1,0 +1,28 @@
+[lab]
+id = "local-smoke"
+name = "Local Smoke"
+
+[submit]
+files = ["submission.json"]
+max_size = "1MB"
+
+[eval]
+image = "labkit-local-smoke:latest"
+timeout = 30
+
+[quota]
+daily = 20
+
+[[metric]]
+id = "score"
+name = "Score"
+sort = "desc"
+
+[board]
+rank_by = "score"
+pick = false
+
+[schedule]
+visible = 2026-01-01T00:00:00Z
+open = 2026-01-01T00:00:00Z
+close = 2027-01-01T00:00:00Z

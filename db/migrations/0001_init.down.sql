@@ -1,0 +1,13 @@
+BEGIN;
+
+DROP TABLE IF EXISTS used_nonces;
+DROP TABLE IF EXISTS leaderboard;
+DROP TABLE IF EXISTS scores;
+DROP TABLE IF EXISTS submissions;
+DROP TABLE IF EXISTS lab_profiles;
+DROP TABLE IF EXISTS device_auth_requests;
+DROP TABLE IF EXISTS user_keys;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS labs;
+
+COMMIT;

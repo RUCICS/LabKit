@@ -1,0 +1,8 @@
+BEGIN;
+
+DROP TABLE IF EXISTS evaluation_jobs;
+
+ALTER TABLE submissions
+    ALTER COLUMN id DROP DEFAULT;
+
+COMMIT;

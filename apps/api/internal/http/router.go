@@ -1,0 +1,212 @@
+package httpapi
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+
+	"labkit.local/apps/api/internal/http/middleware"
+	authsvc "labkit.local/apps/api/internal/service/auth"
+	websession "labkit.local/apps/api/internal/service/websession"
+)
+
+type Router struct {
+	handler http.Handler
+}
+
+type RouterOption func(*routerConfig)
+
+type routerConfig struct {
+	authService        *authsvc.Service
+	labsService        LabsService
+	leaderboardService LeaderboardService
+	submissionsService SubmissionsService
+	personalService    PersonalService
+	adminService       AdminService
+	adminToken         string
+	devMode            bool
+	webSessionService  *websession.Service
+}
+
+func WithAuthService(service *authsvc.Service) RouterOption {
+	return func(cfg *routerConfig) {
+		cfg.authService = service
+	}
+}
+
+func WithLabsService(service LabsService) RouterOption {
+	return func(cfg *routerConfig) {
+		cfg.labsService = service
+	}
+}
+
+func WithAdminToken(token string) RouterOption {
+	return func(cfg *routerConfig) {
+		cfg.adminToken = token
+	}
+}
+
+func WithSubmissionsService(service SubmissionsService) RouterOption {
+	return func(cfg *routerConfig) {
+		cfg.submissionsService = service
+	}
+}
+
+func WithLeaderboardService(service LeaderboardService) RouterOption {
+	return func(cfg *routerConfig) {
+		cfg.leaderboardService = service
+	}
+}
+
+func WithPersonalService(service PersonalService) RouterOption {
+	return func(cfg *routerConfig) {
+		cfg.personalService = service
+	}
+}
+
+func WithAdminService(service AdminService) RouterOption {
+	return func(cfg *routerConfig) {
+		cfg.adminService = service
+	}
+}
+
+func WithWebSessionService(service *websession.Service) RouterOption {
+	return func(cfg *routerConfig) {
+		cfg.webSessionService = service
+	}
+}
+
+func WithDevMode(enabled bool) RouterOption {
+	return func(cfg *routerConfig) {
+		cfg.devMode = enabled
+	}
+}
+
+func NewRouter(options ...RouterOption) *Router {
+	cfg := routerConfig{}
+	for _, option := range options {
+		if option != nil {
+			option(&cfg)
+		}
+	}
+
+	mux := http.NewServeMux()
+	authHandler := &AuthHandler{Service: cfg.authService}
+	verifyHandler := &DeviceVerifyHandler{Service: cfg.authService, BrowserSessionSecure: !cfg.devMode}
+	devDeviceHandler := &DevDeviceHandler{Service: cfg.authService}
+	labsHandler := &LabsHandler{Service: cfg.labsService}
+	leaderboardHandler := &LeaderboardHandler{Service: cfg.leaderboardService, Personal: cfg.personalService}
+	submissionsHandler := &SubmissionsHandler{Service: cfg.submissionsService}
+	historyHandler := &HistoryHandler{Service: cfg.personalService}
+	profileHandler := &ProfileHandler{Service: cfg.personalService}
+	keysHandler := &KeysHandler{Service: cfg.personalService}
+	adminHandler := &AdminHandler{Service: cfg.adminService}
+	webSessionService := cfg.webSessionService
+	if webSessionService == nil {
+		webSessionService = websession.NewService()
+	}
+	webSessionHandler := &WebSessionHandler{
+		Personal:             cfg.personalService,
+		Service:              webSessionService,
+		BrowserSessionSecure: !cfg.devMode,
+	}
+	adminGuard := adminAuthMiddleware(cfg.adminToken)
+
+	mux.Handle("GET /healthz", &HealthHandler{})
+	mux.HandleFunc("POST /api/device/authorize", authHandler.CreateDeviceAuthorizationRequest)
+	mux.HandleFunc("POST /api/device/poll", authHandler.PollDeviceAuthorizationRequest)
+	mux.Handle("GET /api/device/verify", verifyHandler)
+	mux.HandleFunc("POST /api/web/session-ticket", webSessionHandler.CreateSessionTicket)
+	mux.HandleFunc("GET /auth/session", webSessionHandler.ServeSessionShell)
+	mux.HandleFunc("POST /auth/session/exchange", webSessionHandler.ExchangeSessionTicket)
+	if cfg.devMode {
+		mux.HandleFunc("POST /api/dev/device/bind", devDeviceHandler.BindDevice)
+	}
+	mux.HandleFunc("GET /api/labs", labsHandler.ListLabs)
+	mux.HandleFunc("GET /api/labs/{labID}", labsHandler.GetLab)
+	mux.HandleFunc("GET /api/labs/{labID}/board", leaderboardHandler.GetBoard)
+	mux.HandleFunc("POST /api/labs/{labID}/submit", submissionsHandler.CreateSubmission)
+	mux.HandleFunc("POST /api/labs/{labID}/submissions", submissionsHandler.CreateSubmission)
+	mux.HandleFunc("GET /api/labs/{labID}/history", historyHandler.ListHistory)
+	mux.HandleFunc("GET /api/labs/{labID}/submissions/{submissionID}", historyHandler.GetSubmissionDetail)
+	mux.HandleFunc("PUT /api/labs/{labID}/nickname", profileHandler.UpdateNickname)
+	mux.HandleFunc("PUT /api/labs/{labID}/track", profileHandler.UpdateTrack)
+	mux.HandleFunc("GET /api/keys", keysHandler.ListKeys)
+	mux.HandleFunc("DELETE /api/keys/{keyID}", keysHandler.RevokeKey)
+	mux.Handle("POST /api/admin/labs", adminGuard(http.HandlerFunc(labsHandler.RegisterLab)))
+	mux.Handle("PUT /api/admin/labs/{labID}", adminGuard(http.HandlerFunc(labsHandler.UpdateLab)))
+	mux.Handle("GET /api/admin/labs/{labID}/grades", adminGuard(http.HandlerFunc(adminHandler.ExportGrades)))
+	mux.Handle("POST /api/admin/labs/{labID}/reeval", adminGuard(http.HandlerFunc(adminHandler.Reevaluate)))
+	mux.Handle("GET /api/admin/labs/{labID}/queue", adminGuard(http.HandlerFunc(adminHandler.GetQueueStatus)))
+
+	return &Router{
+		handler: middleware.RequestIDMiddleware(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			handler, pattern := mux.Handler(req)
+			if pattern != "" {
+				mux.ServeHTTP(w, req)
+				return
+			}
+
+			if pattern == "" {
+				rr := httptest.NewRecorder()
+				handler.ServeHTTP(rr, req)
+
+				if rr.Code == http.StatusMethodNotAllowed {
+					if allow := rr.Header().Get("Allow"); allow != "" {
+						w.Header().Set("Allow", allow)
+					}
+					middleware.WriteError(w, req, http.StatusMethodNotAllowed, "method_not_allowed", http.StatusText(http.StatusMethodNotAllowed))
+					return
+				}
+
+				if rr.Code == http.StatusNotFound {
+					middleware.WriteError(w, req, http.StatusNotFound, "not_found", http.StatusText(http.StatusNotFound))
+					return
+				}
+
+				copyHeaders(w.Header(), rr.Header())
+				w.WriteHeader(rr.Code)
+				_, _ = w.Write(rr.Body.Bytes())
+				return
+			}
+		})),
+	}
+}
+
+func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	if r == nil || r.handler == nil {
+		http.NotFound(w, req)
+		return
+	}
+	r.handler.ServeHTTP(w, req)
+}
+
+func copyHeaders(dst, src http.Header) {
+	for key, values := range src {
+		dst.Del(key)
+		for _, value := range values {
+			dst.Add(key, value)
+		}
+	}
+}
+
+func adminAuthMiddleware(token string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if next == nil {
+				middleware.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", http.StatusText(http.StatusInternalServerError))
+				return
+			}
+			if strings.TrimSpace(token) == "" {
+				middleware.WriteError(w, r, http.StatusUnauthorized, "unauthorized", http.StatusText(http.StatusUnauthorized))
+				return
+			}
+			scheme, credential, ok := strings.Cut(strings.TrimSpace(r.Header.Get("Authorization")), " ")
+			if !ok || !strings.EqualFold(scheme, "Bearer") || credential != token {
+				middleware.WriteError(w, r, http.StatusUnauthorized, "unauthorized", http.StatusText(http.StatusUnauthorized))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}

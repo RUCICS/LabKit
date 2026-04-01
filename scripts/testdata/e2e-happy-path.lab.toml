@@ -1,0 +1,28 @@
+[lab]
+id = "e2e-happy-path"
+name = "E2E Happy Path"
+
+[submit]
+files = ["e2e-submission.json"]
+max_size = "1MB"
+
+[eval]
+image = "__E2E_EVAL_IMAGE__"
+timeout = 30
+
+[quota]
+daily = 5
+
+[[metric]]
+id = "score"
+name = "Score"
+sort = "desc"
+
+[board]
+rank_by = "score"
+pick = false
+
+[schedule]
+visible = 2026-01-01T00:00:00Z
+open = 2026-01-01T00:00:00Z
+close = 2027-01-01T00:00:00Z

@@ -1,1 +1,114 @@
-services: {}
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-labkit}
+      POSTGRES_USER: ${POSTGRES_USER:-labkit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-labkit}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-labkit} -d ${POSTGRES_DB:-labkit}"
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    restart: unless-stopped
+
+  migrate:
+    image: postgres:18
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-labkit}
+      POSTGRES_USER: ${POSTGRES_USER:-labkit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-labkit}
+    volumes:
+      - ../db/migrations:/migrations:ro
+      - ./migrate.sh:/migrate.sh:ro
+    command: ["/bin/sh", "/migrate.sh"]
+    restart: "no"
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/api.Dockerfile
+    image: labkit-api:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-labkit}:${POSTGRES_PASSWORD:-labkit}@postgres:5432/${POSTGRES_DB:-labkit}?sslmode=disable
+      LABKIT_ADMIN_TOKEN: ${LABKIT_ADMIN_TOKEN:-dev-admin-token}
+      LABKIT_ARTIFACT_ROOT: ${LABKIT_ARTIFACT_ROOT:-/var/lib/labkit/artifacts}
+      LABKIT_DEV_MODE: ${LABKIT_DEV_MODE:-false}
+      LABKIT_OAUTH_CLIENT_ID: ${LABKIT_OAUTH_CLIENT_ID:-dev-client-id}
+      LABKIT_OAUTH_CLIENT_SECRET: ${LABKIT_OAUTH_CLIENT_SECRET:-dev-client-secret}
+      LABKIT_OAUTH_REDIRECT_URL: ${LABKIT_OAUTH_REDIRECT_URL:-http://localhost:8080/api/device/verify}
+      LABKIT_OAUTH_AUTHORIZE_URL: ${LABKIT_OAUTH_AUTHORIZE_URL:-https://example.invalid/oauth/authorize}
+      LABKIT_OAUTH_TOKEN_URL: ${LABKIT_OAUTH_TOKEN_URL:-https://example.invalid/oauth/token}
+      LABKIT_OAUTH_PROFILE_URL: ${LABKIT_OAUTH_PROFILE_URL:-https://example.invalid/oauth/profile}
+    volumes:
+      - artifacts-data:${LABKIT_ARTIFACT_ROOT:-/var/lib/labkit/artifacts}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/worker.Dockerfile
+    image: labkit-worker:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-labkit}:${POSTGRES_PASSWORD:-labkit}@postgres:5432/${POSTGRES_DB:-labkit}?sslmode=disable
+      LABKIT_ARTIFACT_ROOT: ${LABKIT_ARTIFACT_ROOT:-/var/lib/labkit/artifacts}
+      LABKIT_WORKER_ID: ${LABKIT_WORKER_ID:-compose-worker}
+      LABKIT_WORKER_POLL_INTERVAL_MS: ${LABKIT_WORKER_POLL_INTERVAL_MS:-1000}
+      LABKIT_WORKER_WORKSPACE_ROOT: ${LABKIT_WORKER_WORKSPACE_ROOT:-/tmp/labkit-worker}
+      LABKIT_WORKER_MEMORY_LIMIT: ${LABKIT_WORKER_MEMORY_LIMIT:-512m}
+      LABKIT_WORKER_CPU_LIMIT: ${LABKIT_WORKER_CPU_LIMIT:-2}
+      LABKIT_DEV_MODE: ${LABKIT_DEV_MODE:-false}
+      LABKIT_WORKER_DEV_FAKE_EVALUATION: ${LABKIT_WORKER_DEV_FAKE_EVALUATION:-false}
+    volumes:
+      - artifacts-data:${LABKIT_ARTIFACT_ROOT:-/var/lib/labkit/artifacts}
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/web.Dockerfile
+    image: labkit-web:local
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.8-alpine
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+    ports:
+      - "${LABKIT_HTTP_PORT:-8080}:80"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  artifacts-data:
