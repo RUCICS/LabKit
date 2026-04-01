@@ -230,6 +230,7 @@ func (s *Service) BeginDeviceVerification(ctx context.Context, userCode string) 
 	}
 	params := parsed.Query()
 	params.Set("response_type", "code")
+	params.Set("scope", "all")
 	params.Set("redirect_uri", redirectURL)
 	params.Set("state", request.OauthState.String)
 	if clientID := strings.TrimSpace(s.cfg.ClientID); clientID != "" {

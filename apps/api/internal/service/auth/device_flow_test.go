@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"net/url"
 	"testing"
 	"time"
 
@@ -178,6 +179,57 @@ func TestHandleOAuthCallbackDoesNotApproveRequestWhenKeyBindingFails(t *testing.
 	}
 	if repo.completeCalls != 1 {
 		t.Fatalf("CompleteDeviceAuthRequest called %d times, want 1", repo.completeCalls)
+	}
+}
+
+func TestBeginDeviceVerificationIncludesScopeAndConfiguredRedirect(t *testing.T) {
+	repo := newFakeRepository()
+	request := sqlc.DeviceAuthRequests{
+		DeviceCode: "device-code",
+		UserCode:   "user-code",
+		PublicKey:  testAuthorizedKey,
+		Status:     deviceAuthPending,
+		OauthState: pgtype.Text{String: "oauth-state", Valid: true},
+		ExpiresAt:  pgtype.Timestamptz{Time: time.Unix(1700000000, 0).UTC().Add(time.Minute), Valid: true},
+	}
+	repo.requestsByDeviceCode["device-code"] = request
+	repo.requestsByState["oauth-state"] = request
+
+	svc := NewService(repo, &fakeOAuthClient{}, config.OAuthConfig{
+		ClientID:      "school-client",
+		AuthorizeURL:  "https://cas.ruc.edu.cn/cas/oauth2.0/authorize",
+		RedirectURL:   "https://lab.ics.astralis.icu/api/device/verify",
+		DeviceAuthTTL: time.Minute,
+	})
+	svc.now = func() time.Time { return time.Unix(1700000000, 0).UTC() }
+
+	got, err := svc.BeginDeviceVerification(context.Background(), "user-code")
+	if err != nil {
+		t.Fatalf("BeginDeviceVerification() error = %v", err)
+	}
+
+	parsed, err := url.Parse(got)
+	if err != nil {
+		t.Fatalf("url.Parse() error = %v", err)
+	}
+	if parsed.Scheme != "https" || parsed.Host != "cas.ruc.edu.cn" {
+		t.Fatalf("authorize url = %q, want CAS host", got)
+	}
+	query := parsed.Query()
+	if query.Get("response_type") != "code" {
+		t.Fatalf("response_type = %q, want code", query.Get("response_type"))
+	}
+	if query.Get("client_id") != "school-client" {
+		t.Fatalf("client_id = %q, want school-client", query.Get("client_id"))
+	}
+	if query.Get("redirect_uri") != "https://lab.ics.astralis.icu/api/device/verify" {
+		t.Fatalf("redirect_uri = %q, want production callback", query.Get("redirect_uri"))
+	}
+	if query.Get("state") != "oauth-state" {
+		t.Fatalf("state = %q, want oauth-state", query.Get("state"))
+	}
+	if query.Get("scope") != "all" {
+		t.Fatalf("scope = %q, want all", query.Get("scope"))
 	}
 }
 

@@ -55,6 +55,7 @@ services:
       LABKIT_OAUTH_AUTHORIZE_URL: ${LABKIT_OAUTH_AUTHORIZE_URL:-https://example.invalid/oauth/authorize}
       LABKIT_OAUTH_TOKEN_URL: ${LABKIT_OAUTH_TOKEN_URL:-https://example.invalid/oauth/token}
       LABKIT_OAUTH_PROFILE_URL: ${LABKIT_OAUTH_PROFILE_URL:-https://example.invalid/oauth/profile}
+      LABKIT_OAUTH_DEVICE_AUTH_TTL: ${LABKIT_OAUTH_DEVICE_AUTH_TTL:-15m}
     volumes:
       - artifacts-data:${LABKIT_ARTIFACT_ROOT:-/var/lib/labkit/artifacts}
     healthcheck:
@@ -105,10 +106,17 @@ services:
         condition: service_started
     ports:
       - "${LABKIT_HTTP_PORT:-8080}:80"
+      - "${LABKIT_HTTPS_PORT:-8443}:443"
+    environment:
+      LABKIT_SITE_ADDRESS: ${LABKIT_SITE_ADDRESS:-:80}
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
     restart: unless-stopped
 
 volumes:
   postgres-data:
   artifacts-data:
+  caddy-data:
+  caddy-config:

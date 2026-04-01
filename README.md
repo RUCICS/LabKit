@@ -52,6 +52,30 @@ Stop the stack:
 bash scripts/dev-down.sh
 ```
 
+## Production Deploy
+
+For a real domain and school OAuth callback, start from [deploy/.env.prod.example](/home/starrydream/ICS2/LabKit/deploy/.env.prod.example):
+
+```bash
+cp deploy/.env.prod.example deploy/.env
+```
+
+Then set at least:
+
+- `LABKIT_SITE_ADDRESS` to your public host, for example `lab.ics.astralis.icu`
+- `LABKIT_HTTP_PORT=80`
+- `LABKIT_HTTPS_PORT=443`
+- `LABKIT_OAUTH_CLIENT_ID` and `LABKIT_OAUTH_CLIENT_SECRET` to the values issued by the school
+- `LABKIT_OAUTH_REDIRECT_URL=https://<your-host>/api/device/verify`
+
+The current production OAuth wiring expects:
+
+- authorize URL: `https://cas.ruc.edu.cn/cas/oauth2.0/authorize`
+- token URL: `https://cas.ruc.edu.cn/cas/oauth2.0/accessToken`
+- profile URL: `https://cas.ruc.edu.cn/cas/oauth2.0/user/profiles`
+
+The school-side OAuth application must register the same HTTPS callback URL. Caddy now supports both HTTP and HTTPS in Compose and will terminate TLS directly when `LABKIT_SITE_ADDRESS` is set to your real domain.
+
 ## Local Admin Flow
 
 1. Open `http://localhost:8080/admin?token=dev-admin-token`
