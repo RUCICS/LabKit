@@ -63,6 +63,7 @@ lab = "local-smoke"
 之后这些命令都走签名请求，不再依赖学校 OAuth token：
 
 - `submit`
+- `submit precheck`（CLI 在正式上传前自动调用，用于 duplicate hint 和 quota summary）
 - `history`
 - `nick`
 - `track`

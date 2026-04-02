@@ -299,6 +299,9 @@ func TestSubmitCommandSignsMultipartSubmission(t *testing.T) {
 	var stdout bytes.Buffer
 	var captured submitCapture
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if maybeServeSubmitPrecheck(t, w, r, pub) {
+			return
+		}
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -414,6 +417,9 @@ func TestSubmitCommandWaitsForFinalStatusAndRendersScores(t *testing.T) {
 	finishedAt := time.Date(2026, 3, 31, 12, 10, 0, 0, time.UTC)
 	createdAt := time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if maybeServeSubmitPrecheck(t, w, r, pub) {
+			return
+		}
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -562,6 +568,9 @@ func TestSubmitCommandShowsInitialFeedbackBeforeServerAcceptsSubmission(t *testi
 	}
 	defer release()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if maybeServeSubmitPrecheck(t, w, r, pub) {
+			return
+		}
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -625,7 +634,7 @@ func TestSubmitCommandShowsInitialFeedbackBeforeServerAcceptsSubmission(t *testi
 	}
 
 	deadline := time.Now().Add(time.Second)
-	for !strings.Contains(stdout.String(), "Contacting server...") {
+	for !strings.Contains(stdout.String(), "● Submitting  sorting") {
 		if time.Now().After(deadline) {
 			release()
 			t.Fatalf("stdout = %q, want initial feedback before submit request completes", stdout.String())
@@ -645,6 +654,376 @@ func TestSubmitCommandShowsInitialFeedbackBeforeServerAcceptsSubmission(t *testi
 	}
 }
 
+func TestSubmitCommandDuplicateTTYEnterContinues(t *testing.T) {
+	configDir := t.TempDir()
+	keyPath := filepath.Join(configDir, "id_ed25519")
+	pub, priv := mustWriteConfigAndKey(t, configDir, keyPath, "", 11)
+
+	mainPath := filepath.Join(t.TempDir(), "main.c")
+	readmePath := filepath.Join(t.TempDir(), "README.md")
+	mainContent := []byte("int main(void) { return 0; }\n")
+	readmeContent := []byte("# sorting\n")
+	mustWriteFile(t, mainPath, mainContent)
+	mustWriteFile(t, readmePath, readmeContent)
+	archiveHash, err := submissionArchiveHash([]submissionFile{
+		{Name: "main.c", Content: mainContent},
+		{Name: "README.md", Content: readmeContent},
+	})
+	if err != nil {
+		t.Fatalf("submissionArchiveHash() error = %v", err)
+	}
+
+	oldSubmitOutputIsTTY := submitOutputIsTTY
+	submitOutputIsTTY = func(io.Writer) bool { return true }
+	t.Cleanup(func() { submitOutputIsTTY = oldSubmitOutputIsTTY })
+
+	var stdout bytes.Buffer
+	var submitCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
+			writeLabManifest(t, w, manifest.Manifest{
+				Lab:    manifest.LabSection{ID: "sorting", Name: "Sorting"},
+				Submit: manifest.SubmitSection{Files: []string{"main.c", "README.md"}, MaxSize: "1MB"},
+				Eval:   manifest.EvalSection{Image: "ghcr.io/labkit/sorting:1"},
+				Quota:  manifest.QuotaSection{Daily: 3},
+				Metrics: []manifest.MetricSection{
+					{ID: "throughput", Name: "Throughput", Sort: manifest.MetricSortDesc},
+				},
+				Board:    manifest.BoardSection{RankBy: "throughput"},
+				Schedule: manifest.ScheduleSection{Open: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Close: time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting/submit/precheck":
+			if err := verifySignedRequest(t, r, "/api/labs/sorting/submit/precheck", nil, pub); err != nil {
+				t.Fatalf("verifySignedRequest() error = %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"quota": map[string]any{"daily": 3, "used": 1, "left": 2, "reset_hint": "00:00 Asia/Shanghai"},
+				"latest_submission": map[string]any{
+					"content_hash": archiveHash,
+					"created_at":   "2026-03-31T11:48:00Z",
+				},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/labs/sorting/submit":
+			submitCalls++
+			captureSubmitRequest(t, r, pub)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":     "11111111-1111-7111-8111-111111111111",
+				"status": "queued",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("LABKIT_SERVER_URL", srv.URL)
+
+	if err := config.Write(configDir, config.Config{
+		ServerURL: "",
+		KeyPath:   keyPath,
+		KeyID:     11,
+	}); err != nil {
+		t.Fatalf("config.Write() error = %v", err)
+	}
+	if err := keycrypto.WritePrivateKey(keyPath, priv); err != nil {
+		t.Fatalf("WritePrivateKey() error = %v", err)
+	}
+
+	deps := &Dependencies{
+		ConfigDir:  configDir,
+		HTTPClient: srv.Client(),
+		Now:        func() time.Time { return time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC) },
+		In:         strings.NewReader("\n"),
+		Out:        &stdout,
+		Err:        io.Discard,
+	}
+
+	cmd := NewRootCommand(deps)
+	cmd.SetArgs([]string{"--lab", "sorting", "submit", "--no-wait", mainPath, readmePath})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if submitCalls != 1 {
+		t.Fatalf("submitCalls = %d, want 1", submitCalls)
+	}
+	plain := stripANSIForTest(stdout.String())
+	for _, want := range []string{
+		"Matches your latest submission",
+		"Press Enter to submit anyway, or n to cancel",
+		"Submitted",
+	} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("stdout = %q, want %q", plain, want)
+		}
+	}
+}
+
+func TestSubmitCommandDuplicateTTYNoCancels(t *testing.T) {
+	configDir := t.TempDir()
+	keyPath := filepath.Join(configDir, "id_ed25519")
+	pub, priv := mustWriteConfigAndKey(t, configDir, keyPath, "", 11)
+
+	mainPath := filepath.Join(t.TempDir(), "main.c")
+	readmePath := filepath.Join(t.TempDir(), "README.md")
+	mainContent := []byte("int main(void) { return 0; }\n")
+	readmeContent := []byte("# sorting\n")
+	mustWriteFile(t, mainPath, mainContent)
+	mustWriteFile(t, readmePath, readmeContent)
+	archiveHash, err := submissionArchiveHash([]submissionFile{
+		{Name: "main.c", Content: mainContent},
+		{Name: "README.md", Content: readmeContent},
+	})
+	if err != nil {
+		t.Fatalf("submissionArchiveHash() error = %v", err)
+	}
+
+	oldSubmitOutputIsTTY := submitOutputIsTTY
+	submitOutputIsTTY = func(io.Writer) bool { return true }
+	t.Cleanup(func() { submitOutputIsTTY = oldSubmitOutputIsTTY })
+
+	var stdout bytes.Buffer
+	var submitCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
+			writeLabManifest(t, w, manifest.Manifest{
+				Lab:    manifest.LabSection{ID: "sorting", Name: "Sorting"},
+				Submit: manifest.SubmitSection{Files: []string{"main.c", "README.md"}, MaxSize: "1MB"},
+				Eval:   manifest.EvalSection{Image: "ghcr.io/labkit/sorting:1"},
+				Quota:  manifest.QuotaSection{Daily: 3},
+				Metrics: []manifest.MetricSection{
+					{ID: "throughput", Name: "Throughput", Sort: manifest.MetricSortDesc},
+				},
+				Board:    manifest.BoardSection{RankBy: "throughput"},
+				Schedule: manifest.ScheduleSection{Open: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Close: time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting/submit/precheck":
+			if err := verifySignedRequest(t, r, "/api/labs/sorting/submit/precheck", nil, pub); err != nil {
+				t.Fatalf("verifySignedRequest() error = %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"latest_submission": map[string]any{
+					"content_hash": archiveHash,
+					"created_at":   "2026-03-31T11:48:00Z",
+				},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/labs/sorting/submit":
+			submitCalls++
+			http.Error(w, "unexpected submit", http.StatusTeapot)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("LABKIT_SERVER_URL", srv.URL)
+
+	if err := config.Write(configDir, config.Config{
+		ServerURL: "",
+		KeyPath:   keyPath,
+		KeyID:     11,
+	}); err != nil {
+		t.Fatalf("config.Write() error = %v", err)
+	}
+	if err := keycrypto.WritePrivateKey(keyPath, priv); err != nil {
+		t.Fatalf("WritePrivateKey() error = %v", err)
+	}
+
+	deps := &Dependencies{
+		ConfigDir:  configDir,
+		HTTPClient: srv.Client(),
+		Now:        func() time.Time { return time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC) },
+		In:         strings.NewReader("no\n"),
+		Out:        &stdout,
+		Err:        io.Discard,
+	}
+
+	cmd := NewRootCommand(deps)
+	cmd.SetArgs([]string{"--lab", "sorting", "submit", "--no-wait", mainPath, readmePath})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if submitCalls != 0 {
+		t.Fatalf("submitCalls = %d, want 0", submitCalls)
+	}
+	plain := stripANSIForTest(stdout.String())
+	if !strings.Contains(plain, "Submission cancelled") {
+		t.Fatalf("stdout = %q, want cancellation message", plain)
+	}
+}
+
+func TestSubmitCommandDuplicateNonTTYWarnsAndContinues(t *testing.T) {
+	configDir := t.TempDir()
+	keyPath := filepath.Join(configDir, "id_ed25519")
+	pub, priv := mustWriteConfigAndKey(t, configDir, keyPath, "", 11)
+
+	mainPath := filepath.Join(t.TempDir(), "main.c")
+	readmePath := filepath.Join(t.TempDir(), "README.md")
+	mainContent := []byte("int main(void) { return 0; }\n")
+	readmeContent := []byte("# sorting\n")
+	mustWriteFile(t, mainPath, mainContent)
+	mustWriteFile(t, readmePath, readmeContent)
+	archiveHash, err := submissionArchiveHash([]submissionFile{
+		{Name: "main.c", Content: mainContent},
+		{Name: "README.md", Content: readmeContent},
+	})
+	if err != nil {
+		t.Fatalf("submissionArchiveHash() error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var submitCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
+			writeLabManifest(t, w, manifest.Manifest{
+				Lab:    manifest.LabSection{ID: "sorting", Name: "Sorting"},
+				Submit: manifest.SubmitSection{Files: []string{"main.c", "README.md"}, MaxSize: "1MB"},
+				Eval:   manifest.EvalSection{Image: "ghcr.io/labkit/sorting:1"},
+				Quota:  manifest.QuotaSection{Daily: 3},
+				Metrics: []manifest.MetricSection{
+					{ID: "throughput", Name: "Throughput", Sort: manifest.MetricSortDesc},
+				},
+				Board:    manifest.BoardSection{RankBy: "throughput"},
+				Schedule: manifest.ScheduleSection{Open: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Close: time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting/submit/precheck":
+			if err := verifySignedRequest(t, r, "/api/labs/sorting/submit/precheck", nil, pub); err != nil {
+				t.Fatalf("verifySignedRequest() error = %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"latest_submission": map[string]any{
+					"content_hash": archiveHash,
+					"created_at":   "2026-03-31T11:48:00Z",
+				},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/labs/sorting/submit":
+			submitCalls++
+			captureSubmitRequest(t, r, pub)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":     "11111111-1111-7111-8111-111111111111",
+				"status": "queued",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("LABKIT_SERVER_URL", srv.URL)
+
+	if err := config.Write(configDir, config.Config{
+		ServerURL: "",
+		KeyPath:   keyPath,
+		KeyID:     11,
+	}); err != nil {
+		t.Fatalf("config.Write() error = %v", err)
+	}
+	if err := keycrypto.WritePrivateKey(keyPath, priv); err != nil {
+		t.Fatalf("WritePrivateKey() error = %v", err)
+	}
+
+	deps := &Dependencies{
+		ConfigDir:  configDir,
+		HTTPClient: srv.Client(),
+		Now:        func() time.Time { return time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC) },
+		Out:        &stdout,
+		Err:        io.Discard,
+	}
+
+	cmd := NewRootCommand(deps)
+	cmd.SetArgs([]string{"--lab", "sorting", "submit", "--no-wait", mainPath, readmePath})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if submitCalls != 1 {
+		t.Fatalf("submitCalls = %d, want 1", submitCalls)
+	}
+	plain := stripANSIForTest(stdout.String())
+	if !strings.Contains(plain, "Matches your latest submission") {
+		t.Fatalf("stdout = %q, want duplicate warning", plain)
+	}
+}
+
+func TestSubmitCommandContinuesWhenPrecheckFails(t *testing.T) {
+	configDir := t.TempDir()
+	keyPath := filepath.Join(configDir, "id_ed25519")
+	pub, priv := mustWriteConfigAndKey(t, configDir, keyPath, "", 11)
+
+	mainPath := filepath.Join(t.TempDir(), "main.c")
+	readmePath := filepath.Join(t.TempDir(), "README.md")
+	mustWriteFile(t, mainPath, []byte("int main(void) { return 0; }\n"))
+	mustWriteFile(t, readmePath, []byte("# sorting\n"))
+
+	var stdout bytes.Buffer
+	var submitCalls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
+			writeLabManifest(t, w, manifest.Manifest{
+				Lab:    manifest.LabSection{ID: "sorting", Name: "Sorting"},
+				Submit: manifest.SubmitSection{Files: []string{"main.c", "README.md"}, MaxSize: "1MB"},
+				Eval:   manifest.EvalSection{Image: "ghcr.io/labkit/sorting:1"},
+				Quota:  manifest.QuotaSection{Daily: 3},
+				Metrics: []manifest.MetricSection{
+					{ID: "throughput", Name: "Throughput", Sort: manifest.MetricSortDesc},
+				},
+				Board:    manifest.BoardSection{RankBy: "throughput"},
+				Schedule: manifest.ScheduleSection{Open: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Close: time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting/submit/precheck":
+			if err := verifySignedRequest(t, r, "/api/labs/sorting/submit/precheck", nil, pub); err != nil {
+				t.Fatalf("verifySignedRequest() error = %v", err)
+			}
+			http.Error(w, "temporary precheck failure", http.StatusInternalServerError)
+		case r.Method == http.MethodPost && r.URL.Path == "/api/labs/sorting/submit":
+			submitCalls++
+			captureSubmitRequest(t, r, pub)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":     "11111111-1111-7111-8111-111111111111",
+				"status": "queued",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("LABKIT_SERVER_URL", srv.URL)
+
+	if err := config.Write(configDir, config.Config{
+		ServerURL: "",
+		KeyPath:   keyPath,
+		KeyID:     11,
+	}); err != nil {
+		t.Fatalf("config.Write() error = %v", err)
+	}
+	if err := keycrypto.WritePrivateKey(keyPath, priv); err != nil {
+		t.Fatalf("WritePrivateKey() error = %v", err)
+	}
+
+	deps := &Dependencies{
+		ConfigDir:  configDir,
+		HTTPClient: srv.Client(),
+		Now:        func() time.Time { return time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC) },
+		Out:        &stdout,
+		Err:        io.Discard,
+	}
+
+	cmd := NewRootCommand(deps)
+	cmd.SetArgs([]string{"--lab", "sorting", "submit", "--no-wait", mainPath, readmePath})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if submitCalls != 1 {
+		t.Fatalf("submitCalls = %d, want 1", submitCalls)
+	}
+	if !strings.Contains(stripANSIForTest(stdout.String()), "Precheck unavailable, continuing submit") {
+		t.Fatalf("stdout = %q, want fallback warning", stripANSIForTest(stdout.String()))
+	}
+}
+
 func TestSubmitCommandDetachAndNoWaitSkipPolling(t *testing.T) {
 	for _, flag := range []string{"--detach", "--no-wait"} {
 		t.Run(flag, func(t *testing.T) {
@@ -660,6 +1039,9 @@ func TestSubmitCommandDetachAndNoWaitSkipPolling(t *testing.T) {
 			var stdout bytes.Buffer
 			var getCalls int
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if maybeServeSubmitPrecheck(t, w, r, pub) {
+					return
+				}
 				switch {
 				case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 					writeLabManifest(t, w, manifest.Manifest{
@@ -734,6 +1116,180 @@ func TestSubmitCommandDetachAndNoWaitSkipPolling(t *testing.T) {
 	}
 }
 
+func TestSubmitCommandRendersQuotaSummary(t *testing.T) {
+	configDir := t.TempDir()
+	keyPath := filepath.Join(configDir, "id_ed25519")
+	pub, priv := mustWriteConfigAndKey(t, configDir, keyPath, "", 11)
+
+	mainPath := filepath.Join(t.TempDir(), "main.c")
+	readmePath := filepath.Join(t.TempDir(), "README.md")
+	mustWriteFile(t, mainPath, []byte("int main(void) { return 0; }\n"))
+	mustWriteFile(t, readmePath, []byte("# sorting\n"))
+
+	var stdout bytes.Buffer
+	submissionID := "11111111-1111-7111-8111-111111111111"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
+			writeLabManifest(t, w, manifest.Manifest{
+				Lab:    manifest.LabSection{ID: "sorting", Name: "Sorting"},
+				Submit: manifest.SubmitSection{Files: []string{"main.c", "README.md"}, MaxSize: "1MB"},
+				Eval:   manifest.EvalSection{Image: "ghcr.io/labkit/sorting:1"},
+				Quota:  manifest.QuotaSection{Daily: 3},
+				Metrics: []manifest.MetricSection{
+					{ID: "throughput", Name: "Throughput", Sort: manifest.MetricSortDesc},
+				},
+				Board:    manifest.BoardSection{RankBy: "throughput"},
+				Schedule: manifest.ScheduleSection{Open: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Close: time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting/submit/precheck":
+			if err := verifySignedRequest(t, r, "/api/labs/sorting/submit/precheck", nil, pub); err != nil {
+				t.Fatalf("verifySignedRequest() error = %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/labs/sorting/submit":
+			captureSubmitRequest(t, r, pub)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":     submissionID,
+				"status": "queued",
+				"quota":  map[string]any{"daily": 3, "used": 1, "left": 2, "reset_hint": "00:00 Asia/Shanghai"},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting/submissions/"+submissionID:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":          submissionID,
+				"lab_id":      "sorting",
+				"status":      "done",
+				"verdict":     "scored",
+				"message":     "all good",
+				"created_at":  "2026-03-31T12:00:00Z",
+				"finished_at": "2026-03-31T12:10:00Z",
+				"quota":       map[string]any{"daily": 3, "used": 1, "left": 2, "reset_hint": "00:00 Asia/Shanghai"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("LABKIT_SERVER_URL", srv.URL)
+
+	if err := config.Write(configDir, config.Config{
+		ServerURL: "",
+		KeyPath:   keyPath,
+		KeyID:     11,
+	}); err != nil {
+		t.Fatalf("config.Write() error = %v", err)
+	}
+	if err := keycrypto.WritePrivateKey(keyPath, priv); err != nil {
+		t.Fatalf("WritePrivateKey() error = %v", err)
+	}
+
+	deps := &Dependencies{
+		ConfigDir:    configDir,
+		HTTPClient:   srv.Client(),
+		Now:          func() time.Time { return time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC) },
+		PollInterval: time.Millisecond,
+		Out:          &stdout,
+		Err:          io.Discard,
+	}
+
+	cmd := NewRootCommand(deps)
+	cmd.SetArgs([]string{"--lab", "sorting", "submit", mainPath, readmePath})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if !strings.Contains(stripANSIForTest(stdout.String()), "Quota  2 left today · 1/3 used") {
+		t.Fatalf("stdout = %q, want quota summary", stripANSIForTest(stdout.String()))
+	}
+}
+
+func TestSubmitCommandRendersFreeVerdictQuotaSummary(t *testing.T) {
+	configDir := t.TempDir()
+	keyPath := filepath.Join(configDir, "id_ed25519")
+	pub, priv := mustWriteConfigAndKey(t, configDir, keyPath, "", 11)
+
+	mainPath := filepath.Join(t.TempDir(), "main.c")
+	readmePath := filepath.Join(t.TempDir(), "README.md")
+	mustWriteFile(t, mainPath, []byte("int main(void) { return 0; }\n"))
+	mustWriteFile(t, readmePath, []byte("# sorting\n"))
+
+	var stdout bytes.Buffer
+	submissionID := "11111111-1111-7111-8111-111111111111"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
+			writeLabManifest(t, w, manifest.Manifest{
+				Lab:    manifest.LabSection{ID: "sorting", Name: "Sorting"},
+				Submit: manifest.SubmitSection{Files: []string{"main.c", "README.md"}, MaxSize: "1MB"},
+				Eval:   manifest.EvalSection{Image: "ghcr.io/labkit/sorting:1"},
+				Quota:  manifest.QuotaSection{Daily: 3},
+				Metrics: []manifest.MetricSection{
+					{ID: "throughput", Name: "Throughput", Sort: manifest.MetricSortDesc},
+				},
+				Board:    manifest.BoardSection{RankBy: "throughput"},
+				Schedule: manifest.ScheduleSection{Open: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Close: time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting/submit/precheck":
+			if err := verifySignedRequest(t, r, "/api/labs/sorting/submit/precheck", nil, pub); err != nil {
+				t.Fatalf("verifySignedRequest() error = %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{})
+		case r.Method == http.MethodPost && r.URL.Path == "/api/labs/sorting/submit":
+			captureSubmitRequest(t, r, pub)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":     submissionID,
+				"status": "queued",
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting/submissions/"+submissionID:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":          submissionID,
+				"lab_id":      "sorting",
+				"status":      "done",
+				"verdict":     "build_failed",
+				"message":     "compile failed",
+				"quota_state": "free",
+				"created_at":  "2026-03-31T12:00:00Z",
+				"finished_at": "2026-03-31T12:02:00Z",
+				"quota":       map[string]any{"daily": 3, "used": 1, "left": 2, "reset_hint": "00:00 Asia/Shanghai"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("LABKIT_SERVER_URL", srv.URL)
+
+	if err := config.Write(configDir, config.Config{
+		ServerURL: "",
+		KeyPath:   keyPath,
+		KeyID:     11,
+	}); err != nil {
+		t.Fatalf("config.Write() error = %v", err)
+	}
+	if err := keycrypto.WritePrivateKey(keyPath, priv); err != nil {
+		t.Fatalf("WritePrivateKey() error = %v", err)
+	}
+
+	deps := &Dependencies{
+		ConfigDir:    configDir,
+		HTTPClient:   srv.Client(),
+		Now:          func() time.Time { return time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC) },
+		PollInterval: time.Millisecond,
+		Out:          &stdout,
+		Err:          io.Discard,
+	}
+
+	cmd := NewRootCommand(deps)
+	cmd.SetArgs([]string{"--lab", "sorting", "submit", mainPath, readmePath})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if !strings.Contains(stripANSIForTest(stdout.String()), "Quota  2 left today · build_failed is free") {
+		t.Fatalf("stdout = %q, want free quota summary", stripANSIForTest(stdout.String()))
+	}
+}
+
 func TestSubmitCommandRendersFailureMessageAndDetailInResult(t *testing.T) {
 	configDir := t.TempDir()
 	keyPath := filepath.Join(configDir, "id_ed25519")
@@ -750,6 +1306,9 @@ func TestSubmitCommandRendersFailureMessageAndDetailInResult(t *testing.T) {
 	finishedAt := time.Date(2026, 3, 31, 12, 2, 30, 0, time.UTC)
 	createdAt := time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if maybeServeSubmitPrecheck(t, w, r, pub) {
+			return
+		}
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -869,6 +1428,9 @@ func TestSubmitCommandInterruptsWaitingWithHint(t *testing.T) {
 		return ctx, cancel
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if maybeServeSubmitPrecheck(t, w, r, pub) {
+			return
+		}
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -1089,6 +1651,113 @@ func TestBoardCommandUsesSignedRequestAndHighlightsCurrentUser(t *testing.T) {
 	}
 }
 
+func TestBoardCommandRendersQuotaSummaryForSignedUser(t *testing.T) {
+	configDir := t.TempDir()
+	keyPath := filepath.Join(configDir, "id_ed25519")
+	pub, priv := mustWriteConfigAndKey(t, configDir, keyPath, "", 11)
+	if err := keycrypto.WritePrivateKey(keyPath, priv); err != nil {
+		t.Fatalf("WritePrivateKey() error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
+			writeLabManifest(t, w, manifest.Manifest{
+				Lab:    manifest.LabSection{ID: "sorting", Name: "Sorting"},
+				Submit: manifest.SubmitSection{Files: []string{"main.c"}},
+				Eval:   manifest.EvalSection{Image: "ghcr.io/labkit/sorting:1"},
+				Quota:  manifest.QuotaSection{Daily: 3},
+				Metrics: []manifest.MetricSection{
+					{ID: "throughput", Name: "Throughput", Sort: manifest.MetricSortDesc},
+				},
+				Board:    manifest.BoardSection{RankBy: "throughput"},
+				Schedule: manifest.ScheduleSection{Open: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Close: time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting/board":
+			if err := verifySignedRequest(t, r, "/api/labs/sorting/board", nil, pub); err != nil {
+				t.Fatalf("verifySignedRequest() error = %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"lab_id":          "sorting",
+				"selected_metric": "throughput",
+				"metrics":         []map[string]any{{"id": "throughput", "name": "Throughput", "sort": "desc", "selected": true}},
+				"rows":            []map[string]any{{"rank": 1, "nickname": "Bob", "scores": []map[string]any{{"metric_id": "throughput", "value": 88}}, "updated_at": "2026-03-31T10:00:00Z", "current_user": true}},
+				"quota":           map[string]any{"daily": 3, "used": 1, "left": 2, "reset_hint": "00:00 Asia/Shanghai"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("LABKIT_SERVER_URL", srv.URL)
+
+	deps := &Dependencies{
+		ConfigDir:  configDir,
+		HTTPClient: srv.Client(),
+		Now:        func() time.Time { return time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC) },
+		Out:        &stdout,
+		Err:        io.Discard,
+	}
+
+	cmd := NewRootCommand(deps)
+	cmd.SetArgs([]string{"--lab", "sorting", "board"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if !strings.Contains(stripANSIForTest(stdout.String()), "Quota  2 left today · 1/3 used") {
+		t.Fatalf("stdout = %q, want quota summary", stripANSIForTest(stdout.String()))
+	}
+}
+
+func TestBoardCommandOmitsQuotaSummaryWhenAnonymous(t *testing.T) {
+	var stdout bytes.Buffer
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
+			writeLabManifest(t, w, manifest.Manifest{
+				Lab:    manifest.LabSection{ID: "sorting", Name: "Sorting"},
+				Submit: manifest.SubmitSection{Files: []string{"main.c"}},
+				Eval:   manifest.EvalSection{Image: "ghcr.io/labkit/sorting:1"},
+				Quota:  manifest.QuotaSection{Daily: 3},
+				Metrics: []manifest.MetricSection{
+					{ID: "throughput", Name: "Throughput", Sort: manifest.MetricSortDesc},
+				},
+				Board:    manifest.BoardSection{RankBy: "throughput"},
+				Schedule: manifest.ScheduleSection{Open: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Close: time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting/board":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"lab_id":          "sorting",
+				"selected_metric": "throughput",
+				"metrics":         []map[string]any{{"id": "throughput", "name": "Throughput", "sort": "desc", "selected": true}},
+				"rows":            []map[string]any{{"rank": 1, "nickname": "Bob", "scores": []map[string]any{{"metric_id": "throughput", "value": 88}}, "updated_at": "2026-03-31T10:00:00Z"}},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	deps := &Dependencies{
+		ServerURLOverride: srv.URL,
+		HTTPClient:        srv.Client(),
+		Out:               &stdout,
+		Err:               io.Discard,
+	}
+
+	cmd := NewRootCommand(deps)
+	cmd.SetArgs([]string{"--lab", "sorting", "board"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if strings.Contains(stripANSIForTest(stdout.String()), "Quota  ") {
+		t.Fatalf("stdout = %q, want no quota summary for anonymous board", stripANSIForTest(stdout.String()))
+	}
+}
+
 func TestHistoryCommandRendersSubmissionList(t *testing.T) {
 	configDir := t.TempDir()
 	keyPath := filepath.Join(configDir, "id_ed25519")
@@ -1152,6 +1821,57 @@ func TestHistoryCommandRendersSubmissionList(t *testing.T) {
 		if !strings.Contains(stdout.String(), want) {
 			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
 		}
+	}
+}
+
+func TestHistoryCommandRendersQuotaSummary(t *testing.T) {
+	configDir := t.TempDir()
+	keyPath := filepath.Join(configDir, "id_ed25519")
+	_, priv := mustWriteConfigAndKey(t, configDir, keyPath, "", 11)
+	if err := keycrypto.WritePrivateKey(keyPath, priv); err != nil {
+		t.Fatalf("WritePrivateKey() error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting/history":
+			if err := verifySignedRequest(t, r, "/api/labs/sorting/history", nil, priv.Public().(ed25519.PublicKey)); err != nil {
+				t.Fatalf("verifySignedRequest() error = %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"submissions": []map[string]any{
+					{
+						"id":         "22222222-2222-7222-8222-222222222222",
+						"status":     "queued",
+						"created_at": "2026-03-31T12:00:00Z",
+					},
+				},
+				"quota": map[string]any{"daily": 3, "used": 2, "left": 1, "reset_hint": "00:00 Asia/Shanghai"},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("LABKIT_SERVER_URL", srv.URL)
+
+	deps := &Dependencies{
+		ConfigDir:  configDir,
+		HTTPClient: srv.Client(),
+		Now:        func() time.Time { return time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC) },
+		Out:        &stdout,
+		Err:        io.Discard,
+	}
+
+	cmd := NewRootCommand(deps)
+	cmd.SetArgs([]string{"--lab", "sorting", "history"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	if !strings.Contains(stripANSIForTest(stdout.String()), "Quota  1 left today · 2/3 used") {
+		t.Fatalf("stdout = %q, want quota summary", stripANSIForTest(stdout.String()))
 	}
 }
 
@@ -1563,6 +2283,18 @@ func verifySignedRequest(t *testing.T, r *http.Request, path string, body []byte
 		return errors.New("signature mismatch")
 	}
 	return nil
+}
+
+func maybeServeSubmitPrecheck(t *testing.T, w http.ResponseWriter, r *http.Request, pub ed25519.PublicKey) bool {
+	t.Helper()
+	if r.Method != http.MethodGet || r.URL.Path != "/api/labs/sorting/submit/precheck" {
+		return false
+	}
+	if err := verifySignedRequest(t, r, "/api/labs/sorting/submit/precheck", nil, pub); err != nil {
+		t.Fatalf("verifySignedRequest() error = %v", err)
+	}
+	_ = json.NewEncoder(w).Encode(map[string]any{})
+	return true
 }
 
 func mustParseInt64(t *testing.T, raw string) int64 {

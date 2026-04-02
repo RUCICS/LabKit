@@ -132,6 +132,14 @@ go run ./apps/cli/cmd/labkit --server-url http://localhost:8080 --lab sorting ni
 go run ./apps/cli/cmd/labkit --server-url http://localhost:8080 --lab sorting track runtime_ms
 ```
 
+Current submit ergonomics:
+
+- `submit` now does a signed precheck before upload. If the archive hash matches your latest submission, meaning it is the same as your latest submission, interactive TTY mode shows an in-place soft confirm: `Enter` continues, `n` or `no` cancels.
+- Non-interactive `submit` does not block on duplicate content. It prints a short warning and continues.
+- `submit`, authenticated `board`, and `history` now surface a personal quota summary, for example `Quota  2 left today · 1/3 used`.
+- `quota.daily` is enforced against the API's configured quota timezone via `LABKIT_QUOTA_TIMEZONE`, which defaults to `Asia/Shanghai`.
+- New submissions reserve quota immediately as `pending`; evaluator results later settle them to `charged` or `free`. `error` is always free, and `quota.free` covers verdicts such as `build_failed` when declared by the lab manifest.
+
 CLI config now uses TOML:
 
 - global config: `~/.config/labkit/config.toml`

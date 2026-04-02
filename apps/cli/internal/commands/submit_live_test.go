@@ -135,7 +135,7 @@ func TestFormatSubmitLiveBlockStageIndicators(t *testing.T) {
 
 	lines := r.renderLines()
 	stageLine := stripANSIForTest(lines[3])
-	for _, want := range []string{"packed", "queued", "running", "scoring"} {
+	for _, want := range []string{"submitting", "queued", "running", "scoring"} {
 		if !strings.Contains(stageLine, want) {
 			t.Fatalf("stage line = %q, missing %q", stageLine, want)
 		}
@@ -162,9 +162,9 @@ func TestSubmitLiveRendererStartsAndStops(t *testing.T) {
 	}
 
 	out := buf.String()
-	// Must contain cursor-up-4 to rewrite in place
-	if !strings.Contains(out, "\x1b[4A") {
-		t.Fatalf("output = %q, want cursor-up-4 escape", out)
+	// Must contain cursor-up-6 to rewrite the full live block in place.
+	if !strings.Contains(out, "\x1b[6A") {
+		t.Fatalf("output = %q, want cursor-up-6 escape", out)
 	}
 	// Must contain clear-to-end-of-screen on Stop
 	if !strings.Contains(out, "\x1b[J") {

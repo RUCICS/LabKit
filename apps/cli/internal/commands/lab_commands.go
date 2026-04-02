@@ -2,6 +2,7 @@ package commands
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -44,6 +45,7 @@ type boardResponse struct {
 	SelectedMetric string                `json:"selected_metric"`
 	Metrics        []boardMetricResponse `json:"metrics"`
 	Rows           []boardRowResponse    `json:"rows"`
+	Quota          *quotaSummaryResponse `json:"quota,omitempty"`
 }
 
 type boardMetricResponse struct {
@@ -69,6 +71,7 @@ type boardScoreResponse struct {
 
 type historyResponse struct {
 	Submissions []historyItemResponse `json:"submissions"`
+	Quota       *quotaSummaryResponse `json:"quota,omitempty"`
 }
 
 type historyItemResponse struct {
@@ -88,10 +91,11 @@ type profileResponse struct {
 }
 
 type submissionResponse struct {
-	ID          string `json:"id"`
-	Status      string `json:"status"`
-	ArtifactKey string `json:"artifact_key,omitempty"`
-	ContentHash string `json:"content_hash,omitempty"`
+	ID          string                `json:"id"`
+	Status      string                `json:"status"`
+	ArtifactKey string                `json:"artifact_key,omitempty"`
+	ContentHash string                `json:"content_hash,omitempty"`
+	Quota       *quotaSummaryResponse `json:"quota,omitempty"`
 }
 
 type submissionDetailResponse struct {
@@ -99,15 +103,34 @@ type submissionDetailResponse struct {
 	Status     string                `json:"status"`
 	Verdict    string                `json:"verdict,omitempty"`
 	Message    string                `json:"message,omitempty"`
+	QuotaState string                `json:"quota_state,omitempty"`
 	Detail     json.RawMessage       `json:"detail,omitempty"`
 	Scores     []submissionScoreItem `json:"scores,omitempty"`
 	CreatedAt  time.Time             `json:"created_at"`
 	FinishedAt *time.Time            `json:"finished_at,omitempty"`
+	Quota      *quotaSummaryResponse `json:"quota,omitempty"`
 }
 
 type submissionScoreItem struct {
 	MetricID string  `json:"metric_id"`
 	Value    float64 `json:"value"`
+}
+
+type quotaSummaryResponse struct {
+	Daily     int    `json:"daily"`
+	Used      int    `json:"used"`
+	Left      int    `json:"left"`
+	ResetHint string `json:"reset_hint"`
+}
+
+type latestSubmissionHintResponse struct {
+	ContentHash string    `json:"content_hash"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+type submitPrecheckResponse struct {
+	Quota            *quotaSummaryResponse         `json:"quota,omitempty"`
+	LatestSubmission *latestSubmissionHintResponse `json:"latest_submission,omitempty"`
 }
 
 var submitInterruptContext = func(parent context.Context) (context.Context, context.CancelFunc) {
@@ -210,72 +233,116 @@ func runSubmit(ctx context.Context, deps *Dependencies, args []string, detach, n
 	if err != nil {
 		return err
 	}
-	waitSpinner := newLineSpinner(deps.Out, submitOutputIsTTY(deps.Out), "Contacting server...")
-	stopWaitSpinner := func() {
-		if waitSpinner == nil {
-			return
-		}
-		_ = waitSpinner.Stop()
-		waitSpinner = nil
-	}
-	if err := waitSpinner.Start(); err != nil {
+	if err := renderSubmissionTaskStart(deps.Out, labID); err != nil {
 		return err
+	}
+	var live *submitLiveRenderer
+	if submitOutputIsTTY(deps.Out) {
+		live = newSubmitLiveRenderer(deps.Out, deps.Now, client.now().UTC(), "submitting")
+		if err := live.Start(); err != nil {
+			return err
+		}
 	}
 	lab, err := client.getLab(ctx, labID)
 	if err != nil {
-		stopWaitSpinner()
+		if live != nil {
+			_ = live.Stop()
+		}
 		return err
 	}
 	files, err := validateSubmissionFiles(lab.Manifest.Submit.Files, args)
 	if err != nil {
-		stopWaitSpinner()
+		if live != nil {
+			_ = live.Stop()
+		}
 		return err
 	}
 	archiveHash, err := submissionArchiveHash(files)
 	if err != nil {
-		stopWaitSpinner()
-		return err
-	}
-
-	body, contentType, err := buildMultipartSubmission(files)
-	if err != nil {
-		stopWaitSpinner()
+		if live != nil {
+			_ = live.Stop()
+		}
 		return err
 	}
 	if cfg.KeyID == 0 {
-		stopWaitSpinner()
+		if live != nil {
+			_ = live.Stop()
+		}
 		return fmt.Errorf("key id is required; run auth first")
 	}
 	privateKey, err := readPrivateKeyWithDeps(deps, cfg.KeyPath)
 	if err != nil {
-		stopWaitSpinner()
+		if live != nil {
+			_ = live.Stop()
+		}
+		return err
+	}
+	precheck, err := client.getSubmitPrecheck(ctx, labID, cfg, privateKey)
+	if err != nil {
+		if warningErr := renderSubmitPrecheckUnavailable(deps.Out); warningErr != nil {
+			if live != nil {
+				_ = live.Stop()
+			}
+			return warningErr
+		}
+	} else {
+		latestDuplicate := duplicateLatestSubmission(precheck, archiveHash)
+		if latestDuplicate != nil {
+			continueSubmit, err := confirmDuplicateSubmission(deps, live, latestDuplicate)
+			if err != nil {
+				if live != nil {
+					_ = live.Stop()
+				}
+				return err
+			}
+			if !continueSubmit {
+				if live != nil {
+					if err := live.Stop(); err != nil {
+						return err
+					}
+				}
+				return renderSubmissionCancelled(deps.Out)
+			}
+		}
+	}
+	body, contentType, err := buildMultipartSubmission(files)
+	if err != nil {
+		if live != nil {
+			_ = live.Stop()
+		}
 		return err
 	}
 	nonce, err := newNonce()
 	if err != nil {
-		stopWaitSpinner()
+		if live != nil {
+			_ = live.Stop()
+		}
 		return err
 	}
 	payload := auth.NewPayload(labID, client.now().UTC(), nonce, submissionFileNames(files)).
 		WithContentHash(archiveHash)
-	if err := waitSpinner.Update("Sending submission..."); err != nil {
-		stopWaitSpinner()
-		return err
-	}
 	req, err := client.signedRequestWithPayload(ctx, http.MethodPost, "/api/labs/"+labID+"/submit", body, contentType, cfg, privateKey, payload)
 	if err != nil {
-		stopWaitSpinner()
+		if live != nil {
+			_ = live.Stop()
+		}
 		return err
 	}
 
 	var submission submissionResponse
 	if err := client.doJSON(req, &submission); err != nil {
-		stopWaitSpinner()
+		if live != nil {
+			_ = live.Stop()
+		}
 		return err
 	}
-	stopWaitSpinner()
 
 	if detach || noWait {
+		if live != nil {
+			if err := live.Stop(); err != nil {
+				return err
+			}
+		}
 		return renderSubmissionSummary(deps.Out, submission, "", "")
 	}
 
@@ -286,13 +353,8 @@ func runSubmit(ctx context.Context, deps *Dependencies, args []string, detach, n
 	lastStatus := ""
 	statusHistory := []string{}
 	var detail submissionDetailResponse
-	if err := renderSubmissionTaskStart(deps.Out, labID); err != nil {
-		return err
-	}
-	var live *submitLiveRenderer
-	if submitOutputIsTTY(deps.Out) {
-		live = newSubmitLiveRenderer(deps.Out, deps.Now, client.now().UTC(), current.Status)
-		if err := live.Start(); err != nil {
+	if live != nil {
+		if err := live.Update(current.Status); err != nil {
 			return err
 		}
 	}
@@ -590,6 +652,18 @@ func (c *apiClient) getSignedBoard(ctx context.Context, labID, by string, cfg co
 	return result, nil
 }
 
+func (c *apiClient) getSubmitPrecheck(ctx context.Context, labID string, cfg config.Config, private ed25519.PrivateKey) (submitPrecheckResponse, error) {
+	req, err := c.signedRequest(ctx, http.MethodGet, "/api/labs/"+labID+"/submit/precheck", nil, cfg, private)
+	if err != nil {
+		return submitPrecheckResponse{}, err
+	}
+	var result submitPrecheckResponse
+	if err := c.doJSON(req, &result); err != nil {
+		return submitPrecheckResponse{}, err
+	}
+	return result, nil
+}
+
 func (c *apiClient) getSubmissionDetail(ctx context.Context, labID, submissionID string, cfg config.Config, private ed25519.PrivateKey) (submissionDetailResponse, error) {
 	path := "/api/labs/" + labID + "/submissions/" + submissionID
 	req, err := c.signedRequest(ctx, http.MethodGet, path, nil, cfg, private)
@@ -816,6 +890,50 @@ func submissionFileNames(files []submissionFile) []string {
 	return names
 }
 
+func duplicateLatestSubmission(precheck submitPrecheckResponse, contentHash string) *latestSubmissionHintResponse {
+	if precheck.LatestSubmission == nil {
+		return nil
+	}
+	if strings.TrimSpace(precheck.LatestSubmission.ContentHash) != strings.TrimSpace(contentHash) {
+		return nil
+	}
+	return precheck.LatestSubmission
+}
+
+func confirmDuplicateSubmission(deps *Dependencies, live *submitLiveRenderer, latest *latestSubmissionHintResponse) (bool, error) {
+	if latest == nil {
+		return true, nil
+	}
+	deps = normalizeDependencies(deps)
+	theme := ui.DefaultTheme()
+	message := "Matches your latest submission"
+	if !latest.CreatedAt.IsZero() {
+		message += " · " + ui.RelativeTime(latest.CreatedAt, deps.Now())
+	}
+	hint := "Press Enter to submit anyway, or n to cancel"
+
+	if live == nil {
+		if _, err := fmt.Fprintln(deps.Out, theme.WarningStyle.Render("Warning")+"  "+theme.MutedStyle.Render(message)); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+
+	if err := live.SetPrompt(message, hint); err != nil {
+		return false, err
+	}
+	reader := bufio.NewReader(deps.In)
+	line, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, err
+	}
+	if err := live.ClearPrompt(); err != nil {
+		return false, err
+	}
+	answer := strings.ToLower(strings.TrimSpace(line))
+	return answer != "n" && answer != "no", nil
+}
+
 func renderBoard(out io.Writer, lab manifest.PublicManifest, board boardResponse) error {
 	if out == nil {
 		out = io.Discard
@@ -930,7 +1048,7 @@ func renderBoard(out io.Writer, lab manifest.PublicManifest, board boardResponse
 		}
 	}
 
-	return nil
+	return renderQuotaSummary(out, board.Quota, "")
 }
 
 func renderHistory(out io.Writer, history historyResponse) error {
@@ -1017,8 +1135,10 @@ func renderHistory(out io.Writer, history historyResponse) error {
 	if _, err := fmt.Fprintln(out); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintln(out, count)
-	return err
+	if _, err := fmt.Fprintln(out, count); err != nil {
+		return err
+	}
+	return renderQuotaSummary(out, history.Quota, "")
 }
 
 func renderBoardRankBadge(theme ui.Theme, rank int) string {
@@ -1075,6 +1195,24 @@ func renderSubmissionTaskStart(out io.Writer, labID string) error {
 	return err
 }
 
+func renderSubmissionCancelled(out io.Writer) error {
+	if out == nil {
+		out = io.Discard
+	}
+	theme := ui.DefaultTheme()
+	_, err := fmt.Fprintln(out, theme.MutedStyle.Render("Submission cancelled"))
+	return err
+}
+
+func renderSubmitPrecheckUnavailable(out io.Writer) error {
+	if out == nil {
+		out = io.Discard
+	}
+	theme := ui.DefaultTheme()
+	_, err := fmt.Fprintln(out, theme.MutedStyle.Render("Precheck unavailable, continuing submit"))
+	return err
+}
+
 func appendSubmissionStatus(history []string, status string) []string {
 	normalized := strings.TrimSpace(status)
 	if normalized == "" {
@@ -1112,7 +1250,36 @@ func renderSubmissionSummary(out io.Writer, submission submissionResponse, verdi
 		theme.ValueStyle.Render(submission.ID)); err != nil {
 		return err
 	}
-	return nil
+	return renderQuotaSummary(out, submission.Quota, "")
+}
+
+func renderQuotaSummary(out io.Writer, quota *quotaSummaryResponse, freeVerdict string) error {
+	if quota == nil {
+		return nil
+	}
+	if out == nil {
+		out = io.Discard
+	}
+	theme := ui.DefaultTheme()
+	detail := fmt.Sprintf("%d/%d used", quota.Used, quota.Daily)
+	if strings.TrimSpace(freeVerdict) != "" {
+		detail = strings.TrimSpace(freeVerdict) + " is free"
+	} else if quota.Left <= 0 && strings.TrimSpace(quota.ResetHint) != "" {
+		detail = "resets at " + strings.TrimSpace(quota.ResetHint)
+	}
+	if _, err := fmt.Fprintln(out); err != nil {
+		return err
+	}
+	line := fmt.Sprintf("Quota  %d left today · %s", quota.Left, detail)
+	_, err := fmt.Fprintln(out, "  "+theme.MutedStyle.Render(line))
+	return err
+}
+
+func quotaSummaryFreeVerdict(detail submissionDetailResponse) string {
+	if strings.TrimSpace(detail.QuotaState) != "free" {
+		return ""
+	}
+	return strings.TrimSpace(detail.Verdict)
 }
 
 func renderSubmissionFinal(out io.Writer, lab manifest.PublicManifest, detail submissionDetailResponse) error {
@@ -1145,9 +1312,11 @@ func renderSubmissionFinal(out io.Writer, lab manifest.PublicManifest, detail su
 		if _, err := fmt.Fprintln(out); err != nil {
 			return err
 		}
-		return renderSubmissionScores(out, lab, detail.Scores)
+		if err := renderSubmissionScores(out, lab, detail.Scores); err != nil {
+			return err
+		}
 	}
-	return nil
+	return renderQuotaSummary(out, detail.Quota, quotaSummaryFreeVerdict(detail))
 }
 
 func renderSubmissionDetailView(out io.Writer, lab manifest.PublicManifest, detail submissionDetailResponse) error {
@@ -1179,7 +1348,7 @@ func renderSubmissionDetailView(out io.Writer, lab manifest.PublicManifest, deta
 		detailLines = []string{detail.Message}
 	}
 	if len(detailLines) == 0 {
-		return nil
+		return renderQuotaSummary(out, detail.Quota, quotaSummaryFreeVerdict(detail))
 	}
 	if _, err := fmt.Fprintln(out); err != nil {
 		return err
@@ -1189,7 +1358,7 @@ func renderSubmissionDetailView(out io.Writer, lab manifest.PublicManifest, deta
 			return err
 		}
 	}
-	return nil
+	return renderQuotaSummary(out, detail.Quota, quotaSummaryFreeVerdict(detail))
 }
 
 func renderSubmissionScores(out io.Writer, lab manifest.PublicManifest, scores []submissionScoreItem) error {

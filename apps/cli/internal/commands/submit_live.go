@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	liveCursorUp   = "\x1b[4A" // move cursor up 4 lines (one per live block line)
 	liveClearLine  = "\r\x1b[2K"
 	liveClearToEnd = "\x1b[J"
 	liveBarWidth   = 30 // fallback / minimum bar width in characters
+	liveBlockLines = 6
 )
 
 var submitLiveSpinnerFrames = spinnerFrames
@@ -52,13 +52,13 @@ var submitLiveSupportsThinLineBlocks = func() bool {
 }
 
 // submitLiveStages defines the 4 pipeline stages in display order.
-var submitLiveStages = []string{"packed", "queued", "running", "scoring"}
+var submitLiveStages = []string{"submitting", "queued", "running", "scoring"}
 
 // submitStatusToStageIndex maps a submission status to the index of the currently active stage.
-// 0=packed, 1=queued, 2=running, 3=scoring/done
+// 0=submitting, 1=queued, 2=running, 3=scoring/done
 func submitStatusToStageIndex(status string) int {
 	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "prepared", "uploaded":
+	case "submitting", "", "contacting", "sending", "prepared", "uploaded":
 		return 0
 	case "queued":
 		return 1
@@ -81,6 +81,8 @@ type submitLiveRenderer struct {
 	frameIndex int
 	started    bool // true after first render
 	barWidth   int  // cached at construction; adapts to terminal width
+	promptLine string
+	hintLine   string
 }
 
 func newSubmitLiveRenderer(out io.Writer, now func() time.Time, startedAt time.Time, status string) *submitLiveRenderer {
@@ -161,16 +163,30 @@ func (r *submitLiveRenderer) Stop() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	// Move cursor to top of live block and clear to end of screen.
-	_, err := fmt.Fprint(r.out, liveCursorUp+liveClearToEnd)
+	_, err := fmt.Fprint(r.out, liveCursorUpSequence(liveBlockLines)+liveClearToEnd)
 	return err
 }
 
-// renderLines returns the 4 lines that make up the live block (no cursor-movement sequences).
+func (r *submitLiveRenderer) SetPrompt(message, hint string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.promptLine = strings.TrimSpace(message)
+	r.hintLine = strings.TrimSpace(hint)
+	return r.renderCurrentFrameLocked()
+}
+
+func (r *submitLiveRenderer) ClearPrompt() error {
+	return r.SetPrompt("", "")
+}
+
+// renderLines returns the live block lines (no cursor-movement sequences).
 // [0] blank spacing line
 // [1] spinner + status + elapsed
 // [2] progress bar + percentage
 // [3] stage indicators
-func (r *submitLiveRenderer) renderLines() [4]string {
+// [4] optional prompt line
+// [5] optional prompt hint
+func (r *submitLiveRenderer) renderLines() [liveBlockLines]string {
 	theme := ui.DefaultTheme()
 	stageIdx := submitStatusToStageIndex(r.status)
 	elapsed := r.now().Sub(r.startedAt)
@@ -217,7 +233,16 @@ func (r *submitLiveRenderer) renderLines() [4]string {
 	}
 	line3 := "  " + strings.Join(parts, "   ")
 
-	return [4]string{"", line1, line2, line3}
+	line4 := ""
+	if r.promptLine != "" {
+		line4 = "  " + theme.WarningStyle.Render(r.promptLine)
+	}
+	line5 := ""
+	if r.hintLine != "" {
+		line5 = "  " + theme.MutedStyle.Render(r.hintLine)
+	}
+
+	return [liveBlockLines]string{"", line1, line2, line3, line4, line5}
 }
 
 func (r *submitLiveRenderer) renderCurrentFrameLocked() error {
@@ -232,8 +257,7 @@ func (r *submitLiveRenderer) renderCurrentFrameLocked() error {
 		r.started = true
 		return nil
 	}
-	// Subsequent renders: move cursor up 4, rewrite each line.
-	if _, err := fmt.Fprint(r.out, liveCursorUp); err != nil {
+	if _, err := fmt.Fprint(r.out, liveCursorUpSequence(liveBlockLines)); err != nil {
 		return err
 	}
 	for _, line := range lines {
@@ -242,6 +266,10 @@ func (r *submitLiveRenderer) renderCurrentFrameLocked() error {
 		}
 	}
 	return nil
+}
+
+func liveCursorUpSequence(lines int) string {
+	return fmt.Sprintf("\x1b[%dA", lines)
 }
 
 func renderAnimatedSubmitBar(theme ui.Theme, width int, fraction float64, frameIndex int) string {
