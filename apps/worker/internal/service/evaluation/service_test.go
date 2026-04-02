@@ -133,6 +133,82 @@ func TestPersistBuildFailedPreservesNoScores(t *testing.T) {
 	}
 }
 
+func TestPersistSettlesQuotaStateFromVerdict(t *testing.T) {
+	cases := []struct {
+		name             string
+		verdict          evaluator.Verdict
+		freeVerdicts     []string
+		wantQuotaState   string
+		wantQuotaUpdates int
+	}{
+		{
+			name:             "scored charges quota",
+			verdict:          evaluator.VerdictScored,
+			wantQuotaState:   "charged",
+			wantQuotaUpdates: 1,
+		},
+		{
+			name:             "build_failed can be free",
+			verdict:          evaluator.VerdictBuildFailed,
+			freeVerdicts:     []string{"build_failed"},
+			wantQuotaState:   "free",
+			wantQuotaUpdates: 1,
+		},
+		{
+			name:             "rejected without free rule stays charged",
+			verdict:          evaluator.VerdictRejected,
+			wantQuotaState:   "charged",
+			wantQuotaUpdates: 1,
+		},
+		{
+			name:             "error is always free",
+			verdict:          evaluator.VerdictError,
+			wantQuotaState:   "free",
+			wantQuotaUpdates: 1,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := newFakeRepository()
+			svc := newTestService(repo)
+
+			submission := seededSubmission("aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa", 7, "sorting")
+			m := testManifest(t)
+			m.Quota.Free = append([]string(nil), tc.freeVerdicts...)
+
+			err := svc.Persist(context.Background(), PersistInput{
+				Manifest:   m,
+				Submission: submission,
+				Result: evaluator.Result{
+					Verdict: tc.verdict,
+					Message: string(tc.verdict),
+					Scores: func() map[string]float64 {
+						if tc.verdict != evaluator.VerdictScored {
+							return nil
+						}
+						return map[string]float64{
+							"throughput": 1.82,
+							"latency":    1.45,
+						}
+					}(),
+				},
+				FinishedAt: time.Date(2026, 3, 31, 13, 0, 0, 0, time.UTC),
+			})
+			if err != nil {
+				t.Fatalf("Persist() error = %v", err)
+			}
+
+			if repo.lastTx.quotaStateCalls != tc.wantQuotaUpdates {
+				t.Fatalf("quota state updates = %d, want %d", repo.lastTx.quotaStateCalls, tc.wantQuotaUpdates)
+			}
+			if got := repo.submissions[submission.ID].QuotaState; got != tc.wantQuotaState {
+				t.Fatalf("quota_state = %q, want %q", got, tc.wantQuotaState)
+			}
+		})
+	}
+}
+
 func TestPersistInvalidEvaluatorOutputReturnsEvaluatorErrorWithoutTransaction(t *testing.T) {
 	repo := newFakeRepository()
 	svc := newTestService(repo)
@@ -267,6 +343,7 @@ func seededSubmission(rawID string, userID int64, labID string) sqlc.Submissions
 		ArtifactKey: "artifact-key",
 		ContentHash: "content-hash",
 		Status:      "running",
+		QuotaState:  "pending",
 	}
 }
 
@@ -311,6 +388,7 @@ func (r *fakeRepository) UpdateSubmissionRunning(_ context.Context, arg sqlc.Upd
 type fakeTx struct {
 	repo             *fakeRepository
 	updateCalls      int
+	quotaStateCalls  int
 	scoreCalls       int
 	leaderboardCalls int
 	commitCalls      int
@@ -329,6 +407,15 @@ func (tx *fakeTx) UpdateSubmissionResult(_ context.Context, arg sqlc.UpdateSubmi
 	row.ImageDigest = arg.ImageDigest
 	row.StartedAt = arg.StartedAt
 	row.FinishedAt = arg.FinishedAt
+	tx.repo.submissions[arg.ID] = row
+	return nil
+}
+
+func (tx *fakeTx) UpdateSubmissionQuotaState(_ context.Context, arg sqlc.UpdateSubmissionQuotaStateParams) error {
+	tx.quotaStateCalls++
+
+	row := tx.repo.submissions[arg.ID]
+	row.QuotaState = arg.QuotaState
 	tx.repo.submissions[arg.ID] = row
 	return nil
 }
@@ -377,6 +464,7 @@ func (tx *fakeTx) Rollback(context.Context) error {
 
 var _ interface {
 	UpdateSubmissionResult(context.Context, sqlc.UpdateSubmissionResultParams) error
+	UpdateSubmissionQuotaState(context.Context, sqlc.UpdateSubmissionQuotaStateParams) error
 	CreateScore(context.Context, sqlc.CreateScoreParams) error
 	UpsertLeaderboardEntry(context.Context, sqlc.UpsertLeaderboardEntryParams) (sqlc.Leaderboard, error)
 	Commit(context.Context) error

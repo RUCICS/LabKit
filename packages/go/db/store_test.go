@@ -31,6 +31,9 @@ func TestGeneratedQueriesExposeKeyHelpers(t *testing.T) {
 		"CreateSubmission",
 		"GetSubmission",
 		"ListSubmissionsByUserLab",
+		"GetLatestSubmissionByUserLab",
+		"CountSubmissionQuotaUsage",
+		"UpdateSubmissionQuotaState",
 		"ListLabProfilesByLab",
 		"ListScoresByLab",
 		"CreateScore",
@@ -107,6 +110,33 @@ func TestWithTxRollsBackOnPanic(t *testing.T) {
 	_ = WithTx(context.Background(), tx, func(s *Store) error {
 		panic("boom")
 	})
+}
+
+func TestUpdateSubmissionQuotaStateRejectsInvalidValue(t *testing.T) {
+	ctx := context.Background()
+	pool := openTestPool(t, ctx)
+	resetTestDatabase(t, ctx, pool)
+
+	store := New(pool)
+	row, err := store.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
+		UserID:      1,
+		LabID:       "lab-1",
+		KeyID:       1,
+		ArtifactKey: "lab-1/1/artifact.tar.gz",
+		ContentHash: "hash-1",
+		Status:      "queued",
+	})
+	if err != nil {
+		t.Fatalf("CreateSubmission() error = %v", err)
+	}
+
+	err = store.UpdateSubmissionQuotaState(ctx, sqlc.UpdateSubmissionQuotaStateParams{
+		ID:         row.ID,
+		QuotaState: "bogus",
+	})
+	if err == nil {
+		t.Fatal("UpdateSubmissionQuotaState() error = nil, want constraint violation")
+	}
 }
 
 type fakeTx struct {

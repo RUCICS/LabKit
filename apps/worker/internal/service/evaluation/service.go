@@ -28,6 +28,7 @@ type Repository interface {
 
 type Tx interface {
 	UpdateSubmissionResult(context.Context, sqlc.UpdateSubmissionResultParams) error
+	UpdateSubmissionQuotaState(context.Context, sqlc.UpdateSubmissionQuotaStateParams) error
 	CreateScore(context.Context, sqlc.CreateScoreParams) error
 	UpsertLeaderboardEntry(context.Context, sqlc.UpsertLeaderboardEntryParams) (sqlc.Leaderboard, error)
 	Commit(context.Context) error
@@ -102,6 +103,12 @@ func (s *Service) Persist(ctx context.Context, in PersistInput) (err error) {
 	}); err != nil {
 		return err
 	}
+	if err := tx.UpdateSubmissionQuotaState(ctx, sqlc.UpdateSubmissionQuotaStateParams{
+		ID:         in.Submission.ID,
+		QuotaState: quotaStateFor(in.Manifest, in.Result.Verdict),
+	}); err != nil {
+		return err
+	}
 
 	if in.Result.Verdict == evaluator.VerdictScored {
 		if err := persistScores(ctx, tx, in.Submission.ID, in.Result.Scores); err != nil {
@@ -137,6 +144,26 @@ func submissionStatusFor(verdict evaluator.Verdict) string {
 		return submissionStatusError
 	}
 	return submissionStatusDone
+}
+
+func quotaStateFor(m *manifest.Manifest, verdict evaluator.Verdict) string {
+	switch verdict {
+	case evaluator.VerdictError:
+		return "free"
+	case evaluator.VerdictScored:
+		return "charged"
+	case evaluator.VerdictBuildFailed, evaluator.VerdictRejected:
+		if m != nil {
+			for _, freeVerdict := range m.Quota.Free {
+				if freeVerdict == string(verdict) {
+					return "free"
+				}
+			}
+		}
+		return "charged"
+	default:
+		return "charged"
+	}
 }
 
 func textValue(v string) pgtype.Text {

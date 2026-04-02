@@ -16,10 +16,12 @@ import (
 
 type SubmissionsService interface {
 	Intake(context.Context, submissionsvc.SubmitInput) (submissionsvc.Submission, error)
+	GetSubmitPrecheck(context.Context, int64, string) (submissionsvc.SubmitPrecheck, error)
 }
 
 type SubmissionsHandler struct {
-	Service SubmissionsService
+	Service  SubmissionsService
+	Personal PersonalService
 }
 
 func (h *SubmissionsHandler) CreateSubmission(w http.ResponseWriter, r *http.Request) {
@@ -84,14 +86,35 @@ func (h *SubmissionsHandler) CreateSubmission(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusCreated, submission)
 }
 
+func (h *SubmissionsHandler) GetSubmitPrecheck(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.Service == nil || h.Personal == nil {
+		middleware.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", http.StatusText(http.StatusInternalServerError))
+		return
+	}
+	user, ok := authenticatePersonalRequest(w, r, h.Personal, nil)
+	if !ok {
+		return
+	}
+	precheck, err := h.Service.GetSubmitPrecheck(r.Context(), user.UserID, r.PathValue("labID"))
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, precheck)
+}
+
 func (h *SubmissionsHandler) writeError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
+	case errors.Is(err, submissionsvc.ErrLabNotFound):
+		middleware.WriteError(w, r, http.StatusNotFound, "lab_not_found", "Lab not found")
 	case errors.Is(err, submissionsvc.ErrMissingFiles), errors.Is(err, submissionsvc.ErrInvalidSubmission), errors.Is(err, submissionsvc.ErrSubmissionTooLarge):
 		middleware.WriteError(w, r, http.StatusBadRequest, "invalid_submission", err.Error())
 	case errors.Is(err, submissionsvc.ErrInvalidSignature), errors.Is(err, submissionsvc.ErrSubmissionKey), errors.Is(err, auth.ErrNonceReplayed):
 		middleware.WriteError(w, r, http.StatusUnauthorized, "invalid_signature", "Invalid signature")
 	case errors.Is(err, submissionsvc.ErrLabClosed):
 		middleware.WriteError(w, r, http.StatusConflict, "lab_closed", "Lab is closed")
+	case errors.Is(err, submissionsvc.ErrDailyQuotaExceeded):
+		middleware.WriteError(w, r, http.StatusTooManyRequests, "daily_quota_exceeded", err.Error())
 	default:
 		middleware.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", http.StatusText(http.StatusInternalServerError))
 	}

@@ -20,7 +20,7 @@ func TestGetSubmissionDetailReturnsFinalStatusAndResult(t *testing.T) {
 		lab: sqlc.Labs{
 			ID:       "sorting",
 			Name:     "Sorting Lab",
-			Manifest: []byte(`{"lab":{"id":"sorting"}}`),
+			Manifest: []byte(`{"lab":{"id":"sorting"},"quota":{"daily":3}}`),
 		},
 		submission: sqlc.Submissions{
 			ID:          submissionID,
@@ -28,6 +28,7 @@ func TestGetSubmissionDetailReturnsFinalStatusAndResult(t *testing.T) {
 			LabID:       "sorting",
 			KeyID:       11,
 			Status:      "done",
+			QuotaState:  "charged",
 			Verdict:     pgtype.Text{String: "scored", Valid: true},
 			Message:     pgtype.Text{String: "all good", Valid: true},
 			Detail:      []byte(`{"format":"markdown","content":"great"}`),
@@ -40,9 +41,20 @@ func TestGetSubmissionDetailReturnsFinalStatusAndResult(t *testing.T) {
 			{SubmissionID: submissionID, MetricID: "latency", Value: 1.45},
 			{SubmissionID: submissionID, MetricID: "throughput", Value: 1.82},
 		},
+		history: []sqlc.Submissions{
+			{
+				ID:         submissionID,
+				UserID:     7,
+				LabID:      "sorting",
+				Status:     "done",
+				QuotaState: "charged",
+				CreatedAt:  pgtype.Timestamptz{Time: createdAt, Valid: true},
+			},
+		},
 	}
 
 	svc := NewService(repo)
+	svc.now = func() time.Time { return createdAt }
 	got, err := svc.GetSubmissionDetail(context.Background(), 7, "sorting", submissionID)
 	if err != nil {
 		t.Fatalf("GetSubmissionDetail() error = %v", err)
@@ -86,11 +98,63 @@ func TestGetSubmissionDetailReturnsFinalStatusAndResult(t *testing.T) {
 	if got.Scores[0].MetricID != "latency" || got.Scores[1].MetricID != "throughput" {
 		t.Fatalf("Scores = %#v, want latency then throughput", got.Scores)
 	}
+	if got.Quota == nil {
+		t.Fatal("Quota = nil, want summary")
+	}
+	if got.Quota.Daily != 3 || got.Quota.Used != 1 || got.Quota.Left != 2 {
+		t.Fatalf("Quota = %#v, want daily=3 used=1 left=2", got.Quota)
+	}
+}
+
+func TestListSubmissionHistoryReturnsQuotaSummary(t *testing.T) {
+	createdAt := time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC)
+	repo := &submissionDetailTestRepo{
+		lab: sqlc.Labs{
+			ID:       "sorting",
+			Name:     "Sorting Lab",
+			Manifest: []byte(`{"lab":{"id":"sorting"},"quota":{"daily":3}}`),
+		},
+		history: []sqlc.Submissions{
+			{
+				ID:         uuid.MustParse("11111111-1111-7111-8111-111111111111"),
+				UserID:     7,
+				LabID:      "sorting",
+				Status:     "done",
+				QuotaState: "charged",
+				CreatedAt:  pgtype.Timestamptz{Time: createdAt, Valid: true},
+			},
+			{
+				ID:         uuid.MustParse("22222222-2222-7222-8222-222222222222"),
+				UserID:     7,
+				LabID:      "sorting",
+				Status:     "queued",
+				QuotaState: "pending",
+				CreatedAt:  pgtype.Timestamptz{Time: createdAt.Add(-time.Hour), Valid: true},
+			},
+		},
+	}
+
+	svc := NewService(repo)
+	svc.now = func() time.Time { return createdAt }
+	got, err := svc.ListSubmissionHistory(context.Background(), 7, "sorting")
+	if err != nil {
+		t.Fatalf("ListSubmissionHistory() error = %v", err)
+	}
+	if got.Quota == nil {
+		t.Fatal("Quota = nil, want summary")
+	}
+	if got.Quota.Daily != 3 || got.Quota.Used != 2 || got.Quota.Left != 1 {
+		t.Fatalf("Quota = %#v, want daily=3 used=2 left=1", got.Quota)
+	}
+	if len(got.Submissions) != 2 {
+		t.Fatalf("len(Submissions) = %d, want 2", len(got.Submissions))
+	}
 }
 
 type submissionDetailTestRepo struct {
 	lab        sqlc.Labs
 	submission sqlc.Submissions
+	history    []sqlc.Submissions
 	scores     []sqlc.Scores
 }
 
@@ -99,7 +163,7 @@ func (r *submissionDetailTestRepo) GetLab(context.Context, string) (sqlc.Labs, e
 }
 
 func (r *submissionDetailTestRepo) ListSubmissionsByUserLab(context.Context, sqlc.ListSubmissionsByUserLabParams) ([]sqlc.Submissions, error) {
-	return nil, nil
+	return append([]sqlc.Submissions(nil), r.history...), nil
 }
 
 func (r *submissionDetailTestRepo) GetSubmission(context.Context, uuid.UUID) (sqlc.Submissions, error) {

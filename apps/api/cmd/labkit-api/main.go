@@ -59,11 +59,21 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	quotaLocation, err := oauthcfg.ResolveQuotaLocationFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
 	authProvider, err := authproviders.New(oauthConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
 	devMode := strings.EqualFold(strings.TrimSpace(os.Getenv("LABKIT_DEV_MODE")), "true")
+	leaderboardService := boardsvc.NewService(boardsvc.NewRepository(pool))
+	leaderboardService.SetQuotaLocation(quotaLocation)
+	personalService := personalsvc.NewService(personalsvc.NewRepository(pool))
+	personalService.SetQuotaLocation(quotaLocation)
+	submissionsService := submissionsvc.NewService(submissionsvc.NewRepository(pool), storage.NewLocalArtifactStore(artifactRoot))
+	submissionsService.SetQuotaLocation(quotaLocation)
 
 	server := &http.Server{
 		Addr: addr,
@@ -71,10 +81,10 @@ func main() {
 			httpapi.WithAuthService(authsvc.NewServiceWithProvider(authsvc.NewRepository(pool), authProvider, oauthConfig)),
 			httpapi.WithLabsService(labsvc.NewService(db.New(pool))),
 			httpapi.WithAdminService(adminsvc.NewService(adminsvc.NewRepository(pool))),
-			httpapi.WithLeaderboardService(boardsvc.NewService(boardsvc.NewRepository(pool))),
-			httpapi.WithPersonalService(personalsvc.NewService(personalsvc.NewRepository(pool))),
+			httpapi.WithLeaderboardService(leaderboardService),
+			httpapi.WithPersonalService(personalService),
 			httpapi.WithWebSessionService(websession.NewPersistentService(websession.NewRepository(pool))),
-			httpapi.WithSubmissionsService(submissionsvc.NewService(submissionsvc.NewRepository(pool), storage.NewLocalArtifactStore(artifactRoot))),
+			httpapi.WithSubmissionsService(submissionsService),
 			httpapi.WithAdminToken(adminToken),
 			httpapi.WithDevMode(devMode),
 		),

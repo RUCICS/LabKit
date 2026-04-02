@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	submissionsvc "labkit.local/apps/api/internal/service/submissions"
 	"labkit.local/packages/go/auth"
 	"labkit.local/packages/go/db/sqlc"
 	"labkit.local/packages/go/manifest"
@@ -44,7 +45,9 @@ type Repository interface {
 }
 
 type Service struct {
-	repo Repository
+	repo          Repository
+	quotaLocation *time.Location
+	now           func() time.Time
 }
 
 type AuthInput struct {
@@ -78,12 +81,19 @@ type Score struct {
 
 type SubmissionDetail struct {
 	HistoryItem
-	LabID       string          `json:"lab_id"`
-	KeyID       int64           `json:"key_id"`
-	ArtifactKey string          `json:"artifact_key"`
-	ContentHash string          `json:"content_hash"`
-	Detail      json.RawMessage `json:"detail,omitempty"`
-	Scores      []Score         `json:"scores,omitempty"`
+	LabID       string                      `json:"lab_id"`
+	KeyID       int64                       `json:"key_id"`
+	ArtifactKey string                      `json:"artifact_key"`
+	ContentHash string                      `json:"content_hash"`
+	QuotaState  string                      `json:"quota_state,omitempty"`
+	Detail      json.RawMessage             `json:"detail,omitempty"`
+	Scores      []Score                     `json:"scores,omitempty"`
+	Quota       *submissionsvc.QuotaSummary `json:"quota,omitempty"`
+}
+
+type HistoryResponse struct {
+	Submissions []HistoryItem               `json:"submissions"`
+	Quota       *submissionsvc.QuotaSummary `json:"quota,omitempty"`
 }
 
 type Profile struct {
@@ -101,7 +111,19 @@ type Key struct {
 }
 
 func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+	return &Service{repo: repo, quotaLocation: submissionsvc.DefaultQuotaLocation(), now: time.Now}
+}
+
+func (s *Service) SetQuotaLocation(location *time.Location) {
+	if location != nil {
+		s.quotaLocation = location
+	}
+}
+
+func (s *Service) SetNow(now func() time.Time) {
+	if now != nil {
+		s.now = now
+	}
 }
 
 func (s *Service) Authenticate(ctx context.Context, in AuthInput) (AuthenticatedUser, error) {
@@ -133,31 +155,40 @@ func (s *Service) Authenticate(ctx context.Context, in AuthInput) (Authenticated
 	return AuthenticatedUser{UserID: key.UserID, KeyID: key.ID}, nil
 }
 
-func (s *Service) ListSubmissionHistory(ctx context.Context, userID int64, labID string) ([]HistoryItem, error) {
+func (s *Service) ListSubmissionHistory(ctx context.Context, userID int64, labID string) (HistoryResponse, error) {
 	if s == nil || s.repo == nil {
-		return nil, fmt.Errorf("personal service unavailable")
+		return HistoryResponse{}, fmt.Errorf("personal service unavailable")
 	}
 	if strings.TrimSpace(labID) == "" {
-		return nil, ErrLabNotFound
+		return HistoryResponse{}, ErrLabNotFound
 	}
-	if _, err := s.repo.GetLab(ctx, labID); err != nil {
+	lab, err := s.repo.GetLab(ctx, labID)
+	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, ErrLabNotFound
+			return HistoryResponse{}, ErrLabNotFound
 		}
-		return nil, err
+		return HistoryResponse{}, err
+	}
+	parsed, err := manifestFromRow(lab.Manifest)
+	if err != nil {
+		return HistoryResponse{}, err
 	}
 	rows, err := s.repo.ListSubmissionsByUserLab(ctx, sqlc.ListSubmissionsByUserLabParams{
 		UserID: userID,
 		LabID:  labID,
 	})
 	if err != nil {
-		return nil, err
+		return HistoryResponse{}, err
 	}
 	items := make([]HistoryItem, 0, len(rows))
 	for _, row := range rows {
 		items = append(items, historyItemFromSubmission(row))
 	}
-	return items, nil
+	windowStart, windowEnd := submissionsvc.QuotaWindowForTime(s.nowUTC(), s.quotaLocationOrDefault())
+	return HistoryResponse{
+		Submissions: items,
+		Quota:       submissionsvc.BuildQuotaSummary(parsed, submissionsvc.CountQuotaUsage(rows, windowStart, windowEnd), s.quotaLocationOrDefault()),
+	}, nil
 }
 
 func (s *Service) GetSubmissionDetail(ctx context.Context, userID int64, labID string, submissionID uuid.UUID) (SubmissionDetail, error) {
@@ -167,10 +198,15 @@ func (s *Service) GetSubmissionDetail(ctx context.Context, userID int64, labID s
 	if strings.TrimSpace(labID) == "" {
 		return SubmissionDetail{}, ErrLabNotFound
 	}
-	if _, err := s.repo.GetLab(ctx, labID); err != nil {
+	lab, err := s.repo.GetLab(ctx, labID)
+	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return SubmissionDetail{}, ErrLabNotFound
 		}
+		return SubmissionDetail{}, err
+	}
+	parsed, err := manifestFromRow(lab.Manifest)
+	if err != nil {
 		return SubmissionDetail{}, err
 	}
 	row, err := s.repo.GetSubmission(ctx, submissionID)
@@ -187,7 +223,17 @@ func (s *Service) GetSubmissionDetail(ctx context.Context, userID int64, labID s
 	if err != nil {
 		return SubmissionDetail{}, err
 	}
-	return submissionDetailFromRow(row, scores), nil
+	rows, err := s.repo.ListSubmissionsByUserLab(ctx, sqlc.ListSubmissionsByUserLabParams{
+		UserID: userID,
+		LabID:  labID,
+	})
+	if err != nil {
+		return SubmissionDetail{}, err
+	}
+	windowStart, windowEnd := submissionsvc.QuotaWindowForTime(s.nowUTC(), s.quotaLocationOrDefault())
+	detail := submissionDetailFromRow(row, scores)
+	detail.Quota = submissionsvc.BuildQuotaSummary(parsed, submissionsvc.CountQuotaUsage(rows, windowStart, windowEnd), s.quotaLocationOrDefault())
+	return detail, nil
 }
 
 func (s *Service) UpdateNickname(ctx context.Context, userID int64, labID, nickname string) (Profile, error) {
@@ -309,6 +355,7 @@ func submissionDetailFromRow(row sqlc.Submissions, scores []sqlc.Scores) Submiss
 		KeyID:       row.KeyID,
 		ArtifactKey: row.ArtifactKey,
 		ContentHash: row.ContentHash,
+		QuotaState:  row.QuotaState,
 	}
 	if len(row.Detail) > 0 {
 		detail.Detail = append(json.RawMessage(nil), row.Detail...)
@@ -323,6 +370,21 @@ func submissionDetailFromRow(row sqlc.Submissions, scores []sqlc.Scores) Submiss
 		}
 	}
 	return detail
+}
+
+func (s *Service) quotaLocationOrDefault() *time.Location {
+	if s != nil && s.quotaLocation != nil {
+		return s.quotaLocation
+	}
+	return submissionsvc.DefaultQuotaLocation()
+}
+
+func (s *Service) nowUTC() time.Time {
+	now := time.Now
+	if s != nil && s.now != nil {
+		now = s.now
+	}
+	return now().UTC()
 }
 
 func profileFromRow(row sqlc.LabProfiles, lab sqlc.Labs) (Profile, error) {

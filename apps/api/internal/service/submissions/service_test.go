@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -209,6 +210,12 @@ func TestIntakeAcceptsValidSubmissionAndPersistsArtifact(t *testing.T) {
 	if repo.lastCommittedJob.SubmissionID != result.ID {
 		t.Fatalf("job submission id = %v, want %v", repo.lastCommittedJob.SubmissionID, result.ID)
 	}
+	if result.Quota == nil {
+		t.Fatal("Quota = nil, want summary")
+	}
+	if result.Quota.Daily != 3 || result.Quota.Used != 1 || result.Quota.Left != 2 {
+		t.Fatalf("quota summary = %#v, want daily=3 used=1 left=2", result.Quota)
+	}
 
 	files, err := untarGzip(repo.artifacts.lastArchive)
 	if err != nil {
@@ -219,6 +226,128 @@ func TestIntakeAcceptsValidSubmissionAndPersistsArtifact(t *testing.T) {
 	}
 	if string(files["README.md"]) != "# sorting\n" {
 		t.Fatalf("artifact README.md = %q", string(files["README.md"]))
+	}
+}
+
+func TestGetSubmitPrecheckReturnsQuotaSummaryAndLatestSubmission(t *testing.T) {
+	repo, _ := newTestRepo(t)
+	repo.quotaUsage = 1
+	repo.latestSubmission = sqlc.Submissions{
+		ID:          uuid.MustParse("99999999-9999-7999-8999-999999999999"),
+		UserID:      7,
+		LabID:       "sorting",
+		ContentHash: "hash-latest",
+		CreatedAt:   pgtype.Timestamptz{Time: time.Date(2026, 3, 31, 11, 0, 0, 0, time.UTC), Valid: true},
+	}
+	svc := newTestService(repo)
+	svc.SetQuotaLocation(mustLoadLocation(t, "Asia/Shanghai"))
+
+	got, err := svc.GetSubmitPrecheck(context.Background(), 7, "sorting")
+	if err != nil {
+		t.Fatalf("GetSubmitPrecheck() error = %v", err)
+	}
+	if got.Quota == nil {
+		t.Fatal("Quota = nil, want summary")
+	}
+	if got.Quota.Daily != 3 || got.Quota.Used != 1 || got.Quota.Left != 2 {
+		t.Fatalf("quota summary = %#v, want daily=3 used=1 left=2", got.Quota)
+	}
+	if got.LatestSubmission == nil {
+		t.Fatal("LatestSubmission = nil, want metadata")
+	}
+	if got.LatestSubmission.ContentHash != "hash-latest" {
+		t.Fatalf("latest content hash = %q, want %q", got.LatestSubmission.ContentHash, "hash-latest")
+	}
+	if !got.LatestSubmission.CreatedAt.Equal(time.Date(2026, 3, 31, 11, 0, 0, 0, time.UTC)) {
+		t.Fatalf("latest created_at = %v", got.LatestSubmission.CreatedAt)
+	}
+}
+
+func TestGetSubmitPrecheckReturnsLabNotFound(t *testing.T) {
+	repo, _ := newTestRepo(t)
+	svc := newTestService(repo)
+
+	_, err := svc.GetSubmitPrecheck(context.Background(), 7, "missing")
+	if !errors.Is(err, ErrLabNotFound) {
+		t.Fatalf("GetSubmitPrecheck() error = %v, want ErrLabNotFound", err)
+	}
+}
+
+func TestIntakeDailyQuotaRejectsWhenQuotaDayIsExhausted(t *testing.T) {
+	repo, signer := newTestRepo(t)
+	repo.now = time.Date(2026, 3, 31, 16, 30, 0, 0, time.UTC)
+	repo.quotaUsage = 3
+	svc := newTestService(repo)
+	svc.SetQuotaLocation(mustLoadLocation(t, "Asia/Shanghai"))
+
+	_, err := svc.Intake(context.Background(), SubmitInput{
+		LabID:          "sorting",
+		KeyFingerprint: signer.fingerprint,
+		Timestamp:      repo.now,
+		Nonce:          "nonce-quota-hit",
+		Files: []UploadFile{
+			{Name: "main.c", Content: []byte("int main(void) { return 0; }\n")},
+			{Name: "README.md", Content: []byte("# sorting\n")},
+		},
+		Signature: signer.mustSign(t, "sorting", repo.now, "nonce-quota-hit", []UploadFile{
+			{Name: "main.c", Content: []byte("int main(void) { return 0; }\n")},
+			{Name: "README.md", Content: []byte("# sorting\n")},
+		}),
+	})
+	if err == nil {
+		t.Fatal("Intake() error = nil, want daily quota error")
+	}
+	if !strings.Contains(err.Error(), "Daily submission limit reached") {
+		t.Fatalf("Intake() error = %v, want daily quota message", err)
+	}
+	if repo.beginCalls != 1 {
+		t.Fatalf("begin calls = %d, want 1", repo.beginCalls)
+	}
+	if repo.artifacts.saveCalls != 0 {
+		t.Fatalf("artifact save calls = %d, want 0", repo.artifacts.saveCalls)
+	}
+	if repo.lastTx == nil {
+		t.Fatal("transaction was not started")
+	}
+	if repo.lastTx.quotaLockCalls != 1 {
+		t.Fatalf("quota lock calls = %d, want 1", repo.lastTx.quotaLockCalls)
+	}
+	if repo.lastTx.quotaCountCalls != 1 {
+		t.Fatalf("quota count calls = %d, want 1", repo.lastTx.quotaCountCalls)
+	}
+	if repo.lastTx.reserveNonceCalls != 0 {
+		t.Fatalf("reserve nonce calls = %d, want 0", repo.lastTx.reserveNonceCalls)
+	}
+	if _, ok := repo.reservedNonces["nonce-quota-hit"]; ok {
+		t.Fatal("quota rejection unexpectedly reserved nonce")
+	}
+
+	wantStart := time.Date(2026, 4, 1, 0, 0, 0, 0, mustLoadLocation(t, "Asia/Shanghai"))
+	wantEnd := wantStart.AddDate(0, 0, 1)
+	if !repo.lastQuotaWindowStart.Equal(wantStart) {
+		t.Fatalf("quota window start = %v, want %v", repo.lastQuotaWindowStart, wantStart)
+	}
+	if !repo.lastQuotaWindowEnd.Equal(wantEnd) {
+		t.Fatalf("quota window end = %v, want %v", repo.lastQuotaWindowEnd, wantEnd)
+	}
+
+	repo.quotaUsage = 0
+	_, err = svc.Intake(context.Background(), SubmitInput{
+		LabID:          "sorting",
+		KeyFingerprint: signer.fingerprint,
+		Timestamp:      repo.now,
+		Nonce:          "nonce-quota-hit",
+		Files: []UploadFile{
+			{Name: "main.c", Content: []byte("int main(void) { return 0; }\n")},
+			{Name: "README.md", Content: []byte("# sorting\n")},
+		},
+		Signature: signer.mustSign(t, "sorting", repo.now, "nonce-quota-hit", []UploadFile{
+			{Name: "main.c", Content: []byte("int main(void) { return 0; }\n")},
+			{Name: "README.md", Content: []byte("# sorting\n")},
+		}),
+	})
+	if err != nil {
+		t.Fatalf("retry Intake() error = %v, want success after quota frees up", err)
 	}
 }
 
@@ -423,6 +552,12 @@ type fakeRepository struct {
 	userKeys                map[int64]sqlc.UserKeys
 	artifacts               *fakeArtifactStore
 	beginCalls              int
+	quotaUsage              int64
+	latestSubmission        sqlc.Submissions
+	lastQuotaUserID         int64
+	lastQuotaLabID          string
+	lastQuotaWindowStart    time.Time
+	lastQuotaWindowEnd      time.Time
 	failCreateJob           error
 	lastTx                  *fakeTx
 	lastCommittedSubmission sqlc.Submissions
@@ -511,12 +646,49 @@ func (r *fakeRepository) ReserveNonce(_ context.Context, nonce string) (bool, er
 	return true, nil
 }
 
+func (r *fakeRepository) CountSubmissionQuotaUsage(_ context.Context, userID int64, labID string, start, end time.Time) (int64, error) {
+	r.lastQuotaUserID = userID
+	r.lastQuotaLabID = labID
+	r.lastQuotaWindowStart = start
+	r.lastQuotaWindowEnd = end
+	return r.quotaUsage, nil
+}
+
+func (r *fakeRepository) GetLatestSubmissionByUserLab(_ context.Context, userID int64, labID string) (sqlc.Submissions, error) {
+	if r.latestSubmission.ID == uuid.Nil || r.latestSubmission.UserID != userID || r.latestSubmission.LabID != labID {
+		return sqlc.Submissions{}, pgx.ErrNoRows
+	}
+	return r.latestSubmission, nil
+}
+
 type fakeTx struct {
-	repo             *fakeRepository
-	stagedSubmission sqlc.Submissions
-	stagedJob        sqlc.EvaluationJobs
-	commitCalls      int
-	rollbackCalls    int
+	repo              *fakeRepository
+	stagedSubmission  sqlc.Submissions
+	stagedJob         sqlc.EvaluationJobs
+	quotaLockCalls    int
+	quotaCountCalls   int
+	reserveNonceCalls int
+	commitCalls       int
+	rollbackCalls     int
+}
+
+func (tx *fakeTx) LockSubmissionQuota(_ context.Context, userID int64, labID string, dayStart time.Time) error {
+	tx.quotaLockCalls++
+	return nil
+}
+
+func (tx *fakeTx) CountSubmissionQuotaUsage(_ context.Context, userID int64, labID string, start, end time.Time) (int64, error) {
+	tx.quotaCountCalls++
+	tx.repo.lastQuotaUserID = userID
+	tx.repo.lastQuotaLabID = labID
+	tx.repo.lastQuotaWindowStart = start
+	tx.repo.lastQuotaWindowEnd = end
+	return tx.repo.quotaUsage, nil
+}
+
+func (tx *fakeTx) ReserveNonce(_ context.Context, nonce string) (bool, error) {
+	tx.reserveNonceCalls++
+	return tx.repo.ReserveNonce(context.Background(), nonce)
 }
 
 func (tx *fakeTx) CreateSubmission(_ context.Context, arg sqlc.CreateSubmissionParams) (sqlc.Submissions, error) {
@@ -678,4 +850,13 @@ func untarGzip(data []byte) (map[string][]byte, error) {
 		}
 		files[hdr.Name] = content
 	}
+}
+
+func mustLoadLocation(t *testing.T, name string) *time.Location {
+	t.Helper()
+	location, err := time.LoadLocation(name)
+	if err != nil {
+		t.Fatalf("LoadLocation(%q) error = %v", name, err)
+	}
+	return location
 }

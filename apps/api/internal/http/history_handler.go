@@ -14,7 +14,7 @@ import (
 
 type PersonalService interface {
 	Authenticate(context.Context, personal.AuthInput) (personal.AuthenticatedUser, error)
-	ListSubmissionHistory(context.Context, int64, string) ([]personal.HistoryItem, error)
+	ListSubmissionHistory(context.Context, int64, string) (personal.HistoryResponse, error)
 	GetSubmissionDetail(context.Context, int64, string, uuid.UUID) (personal.SubmissionDetail, error)
 	UpdateNickname(context.Context, int64, string, string) (personal.Profile, error)
 	UpdateTrack(context.Context, int64, string, string) (personal.Profile, error)
@@ -41,7 +41,7 @@ func (h *HistoryHandler) ListHistory(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"submissions": items})
+	writeJSON(w, http.StatusOK, items)
 }
 
 func (h *HistoryHandler) GetSubmissionDetail(w http.ResponseWriter, r *http.Request) {

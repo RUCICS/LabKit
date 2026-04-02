@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -43,7 +44,8 @@ func (r *repo) ListScoresBySubmission(ctx context.Context, submissionID uuid.UUI
 }
 
 func (r *repo) GetUserKeyByFingerprint(ctx context.Context, fingerprint string) (sqlc.UserKeys, error) {
-	row, err := r.store.GetUserKeyByFingerprint(ctx, fingerprint)
+	fingerprintText := pgtype.Text{String: fingerprint, Valid: strings.TrimSpace(fingerprint) != ""}
+	row, err := r.store.GetUserKeyByFingerprint(ctx, fingerprintText)
 	if err == nil {
 		return row, nil
 	}
@@ -65,7 +67,7 @@ func (r *repo) GetUserKeyByFingerprint(ctx context.Context, fingerprint string) 
 		if auth.PublicKeyFingerprint(publicKey) == fingerprint {
 			_ = r.store.UpdateUserKeyFingerprint(ctx, sqlc.UpdateUserKeyFingerprintParams{
 				ID:          row.ID,
-				Fingerprint: fingerprint,
+				Fingerprint: fingerprintText,
 			})
 			return row, nil
 		}

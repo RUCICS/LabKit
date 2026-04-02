@@ -104,6 +104,15 @@ timeout = 300                      # 可选，秒，默认 300
 daily = 3
 free  = ["build_failed"]          # 默认 []
 
+# 运行时补充语义：
+# - `quota.daily` 按服务端 `LABKIT_QUOTA_TIMEZONE` 的自然日计算，
+#   默认 `Asia/Shanghai`，不是宿主机 OS 时区。
+# - submission 创建时先预占为 `pending`，评测完成后再结算成
+#   `charged` 或 `free`。
+# - `error` 永远免费，不需要在 `quota.free` 中重复声明。
+# - CLI 会在上传前检查“是否与最近一次 submission 内容相同”；
+#   命中时只做软确认，不会被服务端硬拦截。
+
 # ── 指标 ───────────────────────────────────────────
 # 声明 evaluator 会输出哪些数值指标。
 # Platform 用这些声明来：

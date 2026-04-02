@@ -80,6 +80,7 @@ type Submissions struct {
 	StartedAt   pgtype.Timestamptz `json:"started_at"`
 	FinishedAt  pgtype.Timestamptz `json:"finished_at"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	QuotaState  string             `json:"quota_state"`
 }
 
 type UsedNonces struct {
@@ -91,10 +92,10 @@ type UserKeys struct {
 	ID          int64              `json:"id"`
 	UserID      int64              `json:"user_id"`
 	PublicKey   string             `json:"public_key"`
-	Fingerprint pgtype.Text        `json:"fingerprint"`
 	DeviceName  string             `json:"device_name"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	RevokedAt   pgtype.Timestamptz `json:"revoked_at"`
+	Fingerprint pgtype.Text        `json:"fingerprint"`
 }
 
 type Users struct {

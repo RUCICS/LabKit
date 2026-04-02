@@ -262,7 +262,7 @@ func (s *Service) DevBindDeviceAuthorizationRequest(ctx context.Context, in DevB
 		DeviceCode:  request.DeviceCode,
 		OauthState:  pgtype.Text{String: request.OauthState.String, Valid: request.OauthState.Valid},
 		StudentID:   pgtype.Text{String: studentID, Valid: studentID != ""},
-		Fingerprint: fingerprint,
+		Fingerprint: pgtype.Text{String: fingerprint, Valid: fingerprint != ""},
 		DeviceName:  deviceName,
 	})
 	if err != nil {
@@ -324,7 +324,7 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, state, code string) (
 		DeviceCode:  request.DeviceCode,
 		OauthState:  pgtype.Text{String: state, Valid: state != ""},
 		StudentID:   pgtype.Text{String: studentID, Valid: studentID != ""},
-		Fingerprint: fingerprint,
+		Fingerprint: pgtype.Text{String: fingerprint, Valid: fingerprint != ""},
 		DeviceName:  defaultDeviceName,
 	})
 	if err != nil {

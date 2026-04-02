@@ -96,7 +96,7 @@ func NewRouter(options ...RouterOption) *Router {
 	devDeviceHandler := &DevDeviceHandler{Service: cfg.authService}
 	labsHandler := &LabsHandler{Service: cfg.labsService}
 	leaderboardHandler := &LeaderboardHandler{Service: cfg.leaderboardService, Personal: cfg.personalService}
-	submissionsHandler := &SubmissionsHandler{Service: cfg.submissionsService}
+	submissionsHandler := &SubmissionsHandler{Service: cfg.submissionsService, Personal: cfg.personalService}
 	historyHandler := &HistoryHandler{Service: cfg.personalService}
 	profileHandler := &ProfileHandler{Service: cfg.personalService}
 	keysHandler := &KeysHandler{Service: cfg.personalService}
@@ -125,6 +125,7 @@ func NewRouter(options ...RouterOption) *Router {
 	mux.HandleFunc("GET /api/labs", labsHandler.ListLabs)
 	mux.HandleFunc("GET /api/labs/{labID}", labsHandler.GetLab)
 	mux.HandleFunc("GET /api/labs/{labID}/board", leaderboardHandler.GetBoard)
+	mux.HandleFunc("GET /api/labs/{labID}/submit/precheck", submissionsHandler.GetSubmitPrecheck)
 	mux.HandleFunc("POST /api/labs/{labID}/submit", submissionsHandler.CreateSubmission)
 	mux.HandleFunc("POST /api/labs/{labID}/submissions", submissionsHandler.CreateSubmission)
 	mux.HandleFunc("GET /api/labs/{labID}/history", historyHandler.ListHistory)

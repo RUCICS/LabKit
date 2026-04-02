@@ -21,6 +21,14 @@ FROM submissions
 WHERE user_id = $1 AND lab_id = $2
 ORDER BY created_at DESC;
 
+-- name: GetLatestSubmissionByUserLab :one
+SELECT *
+FROM submissions
+WHERE user_id = $1
+  AND lab_id = $2
+ORDER BY created_at DESC
+LIMIT 1;
+
 -- name: GetLatestScoredSubmissionByUserLab :one
 SELECT *
 FROM submissions
@@ -46,6 +54,20 @@ UPDATE submissions
 SET status = $2,
     started_at = $3
 WHERE id = $1;
+
+-- name: UpdateSubmissionQuotaState :exec
+UPDATE submissions
+SET quota_state = $2
+WHERE id = $1;
+
+-- name: CountSubmissionQuotaUsage :one
+SELECT COUNT(*)
+FROM submissions
+WHERE user_id = $1
+  AND lab_id = $2
+  AND created_at >= $3
+  AND created_at < $4
+  AND quota_state IN ('pending', 'charged');
 
 -- name: CreateScore :exec
 INSERT INTO scores (submission_id, metric_id, value)

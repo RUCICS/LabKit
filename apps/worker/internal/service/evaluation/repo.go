@@ -38,6 +38,10 @@ func (tx *storeTx) UpdateSubmissionResult(ctx context.Context, arg sqlc.UpdateSu
 	return tx.queries.UpdateSubmissionResult(ctx, arg)
 }
 
+func (tx *storeTx) UpdateSubmissionQuotaState(ctx context.Context, arg sqlc.UpdateSubmissionQuotaStateParams) error {
+	return tx.queries.UpdateSubmissionQuotaState(ctx, arg)
+}
+
 func (tx *storeTx) CreateScore(ctx context.Context, arg sqlc.CreateScoreParams) error {
 	return tx.queries.CreateScore(ctx, arg)
 }

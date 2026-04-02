@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	submissionsvc "labkit.local/apps/api/internal/service/submissions"
 	"labkit.local/packages/go/db/sqlc"
 	"labkit.local/packages/go/manifest"
 
@@ -29,18 +30,21 @@ type Repository interface {
 	ListLeaderboardByLabAndMetricDesc(context.Context, sqlc.ListLeaderboardByLabAndMetricDescParams) ([]sqlc.ListLeaderboardByLabAndMetricDescRow, error)
 	ListScoresByLab(context.Context, string) ([]sqlc.Scores, error)
 	ListLabProfilesByLab(context.Context, string) ([]sqlc.LabProfiles, error)
+	CountSubmissionQuotaUsage(context.Context, int64, string, time.Time, time.Time) (int64, error)
 }
 
 type Service struct {
-	repo Repository
-	now  func() time.Time
+	repo          Repository
+	now           func() time.Time
+	quotaLocation *time.Location
 }
 
 type Board struct {
-	LabID          string        `json:"lab_id"`
-	SelectedMetric string        `json:"selected_metric"`
-	Metrics        []BoardMetric `json:"metrics"`
-	Rows           []BoardRow    `json:"rows"`
+	LabID          string                      `json:"lab_id"`
+	SelectedMetric string                      `json:"selected_metric"`
+	Metrics        []BoardMetric               `json:"metrics"`
+	Rows           []BoardRow                  `json:"rows"`
+	Quota          *submissionsvc.QuotaSummary `json:"quota,omitempty"`
 }
 
 type BoardMetric struct {
@@ -65,7 +69,13 @@ type BoardScore struct {
 }
 
 func NewService(repo Repository) *Service {
-	return &Service{repo: repo, now: time.Now}
+	return &Service{repo: repo, now: time.Now, quotaLocation: submissionsvc.DefaultQuotaLocation()}
+}
+
+func (s *Service) SetQuotaLocation(location *time.Location) {
+	if location != nil {
+		s.quotaLocation = location
+	}
 }
 
 func (s *Service) GetBoard(ctx context.Context, labID, by string, viewerUserID int64) (Board, error) {
@@ -177,6 +187,14 @@ func (s *Service) GetBoard(ctx context.Context, labID, by string, viewerUserID i
 		rows[i].row.Rank = i + 1
 		board.Rows = append(board.Rows, rows[i].row)
 	}
+	if viewerUserID != 0 {
+		windowStart, windowEnd := submissionsvc.QuotaWindowForTime(s.nowUTC(), s.quotaLocationOrDefault())
+		used, err := s.repo.CountSubmissionQuotaUsage(ctx, viewerUserID, labRow.ID, windowStart, windowEnd)
+		if err != nil {
+			return Board{}, err
+		}
+		board.Quota = submissionsvc.BuildQuotaSummary(parsed, int(used), s.quotaLocationOrDefault())
+	}
 	return board, nil
 }
 
@@ -186,6 +204,13 @@ func (s *Service) nowUTC() time.Time {
 		now = time.Now
 	}
 	return now().UTC()
+}
+
+func (s *Service) quotaLocationOrDefault() *time.Location {
+	if s != nil && s.quotaLocation != nil {
+		return s.quotaLocation
+	}
+	return submissionsvc.DefaultQuotaLocation()
 }
 
 func parseManifest(raw json.RawMessage) (*manifest.Manifest, error) {

@@ -129,7 +129,7 @@ func TestGetBoardShowsTrackWhenPickEnabled(t *testing.T) {
 	}
 }
 
-func TestGetBoardMarksCurrentUserRow(t *testing.T) {
+func TestGetBoardQuotaSummaryMarksCurrentUserRow(t *testing.T) {
 	repo := newFakeRepository()
 	svc := newTestService(repo, time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC))
 
@@ -143,6 +143,12 @@ func TestGetBoardMarksCurrentUserRow(t *testing.T) {
 	}
 	if board.Rows[0].CurrentUser {
 		t.Fatalf("board row %#v, want non-current user row unflagged", board.Rows[0])
+	}
+	if board.Quota == nil {
+		t.Fatal("Quota = nil, want summary for signed viewer")
+	}
+	if board.Quota.Daily != 3 || board.Quota.Used != 1 || board.Quota.Left != 2 {
+		t.Fatalf("Quota = %#v, want daily=3 used=1 left=2", board.Quota)
 	}
 }
 
@@ -184,6 +190,7 @@ type fakeRepository struct {
 	scoreCalls    int
 	scoreLabCalls int
 	profileCalls  int
+	quotaUsage    int64
 }
 
 func newFakeRepository() *fakeRepository {
@@ -388,7 +395,12 @@ close = 2026-04-30T00:00:00Z
 				{UserID: 6, LabID: "tiecase", Nickname: "Alpha"},
 			},
 		},
+		quotaUsage: 1,
 	}
+}
+
+func (r *fakeRepository) CountSubmissionQuotaUsage(_ context.Context, _ int64, _ string, _ time.Time, _ time.Time) (int64, error) {
+	return r.quotaUsage, nil
 }
 
 func (r *fakeRepository) GetLab(_ context.Context, labID string) (sqlc.Labs, error) {

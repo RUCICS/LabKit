@@ -46,7 +46,7 @@ type CompleteDeviceAuthRequestParams struct {
 	DeviceCode  string      `json:"device_code"`
 	OauthState  pgtype.Text `json:"oauth_state"`
 	StudentID   pgtype.Text `json:"student_id"`
-	Fingerprint string      `json:"fingerprint"`
+	Fingerprint pgtype.Text `json:"fingerprint"`
 	DeviceName  string      `json:"device_name"`
 }
 
@@ -126,27 +126,32 @@ func (q *Queries) CreateUser(ctx context.Context, studentID string) (Users, erro
 const createUserKey = `-- name: CreateUserKey :one
 INSERT INTO user_keys (user_id, public_key, fingerprint, device_name)
 VALUES ($1, $2, $3, $4)
-RETURNING id, user_id, public_key, fingerprint, device_name, created_at, revoked_at
+RETURNING id, user_id, public_key, device_name, created_at, revoked_at, fingerprint
 `
 
 type CreateUserKeyParams struct {
-	UserID      int64  `json:"user_id"`
-	PublicKey   string `json:"public_key"`
-	Fingerprint string `json:"fingerprint"`
-	DeviceName  string `json:"device_name"`
+	UserID      int64       `json:"user_id"`
+	PublicKey   string      `json:"public_key"`
+	Fingerprint pgtype.Text `json:"fingerprint"`
+	DeviceName  string      `json:"device_name"`
 }
 
 func (q *Queries) CreateUserKey(ctx context.Context, arg CreateUserKeyParams) (UserKeys, error) {
-	row := q.db.QueryRow(ctx, createUserKey, arg.UserID, arg.PublicKey, arg.Fingerprint, arg.DeviceName)
+	row := q.db.QueryRow(ctx, createUserKey,
+		arg.UserID,
+		arg.PublicKey,
+		arg.Fingerprint,
+		arg.DeviceName,
+	)
 	var i UserKeys
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
 		&i.PublicKey,
-		&i.Fingerprint,
 		&i.DeviceName,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.Fingerprint,
 	)
 	return i, err
 }
@@ -281,8 +286,31 @@ func (q *Queries) GetUserByStudentID(ctx context.Context, studentID string) (Use
 	return i, err
 }
 
+const getUserKeyByFingerprint = `-- name: GetUserKeyByFingerprint :one
+SELECT id, user_id, public_key, device_name, created_at, revoked_at, fingerprint
+FROM user_keys
+WHERE fingerprint = $1
+  AND revoked_at IS NULL
+LIMIT 1
+`
+
+func (q *Queries) GetUserKeyByFingerprint(ctx context.Context, fingerprint pgtype.Text) (UserKeys, error) {
+	row := q.db.QueryRow(ctx, getUserKeyByFingerprint, fingerprint)
+	var i UserKeys
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.PublicKey,
+		&i.DeviceName,
+		&i.CreatedAt,
+		&i.RevokedAt,
+		&i.Fingerprint,
+	)
+	return i, err
+}
+
 const getUserKeyByID = `-- name: GetUserKeyByID :one
-SELECT id, user_id, public_key, fingerprint, device_name, created_at, revoked_at
+SELECT id, user_id, public_key, device_name, created_at, revoked_at, fingerprint
 FROM user_keys
 WHERE id = $1
   AND revoked_at IS NULL
@@ -296,39 +324,51 @@ func (q *Queries) GetUserKeyByID(ctx context.Context, id int64) (UserKeys, error
 		&i.ID,
 		&i.UserID,
 		&i.PublicKey,
-		&i.Fingerprint,
 		&i.DeviceName,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.Fingerprint,
 	)
 	return i, err
 }
 
-const getUserKeyByFingerprint = `-- name: GetUserKeyByFingerprint :one
-SELECT id, user_id, public_key, fingerprint, device_name, created_at, revoked_at
+const listActiveUserKeys = `-- name: ListActiveUserKeys :many
+SELECT id, user_id, public_key, device_name, created_at, revoked_at, fingerprint
 FROM user_keys
-WHERE fingerprint = $1
-  AND revoked_at IS NULL
-LIMIT 1
+WHERE revoked_at IS NULL
+ORDER BY created_at DESC
 `
 
-func (q *Queries) GetUserKeyByFingerprint(ctx context.Context, fingerprint string) (UserKeys, error) {
-	row := q.db.QueryRow(ctx, getUserKeyByFingerprint, fingerprint)
-	var i UserKeys
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.PublicKey,
-		&i.Fingerprint,
-		&i.DeviceName,
-		&i.CreatedAt,
-		&i.RevokedAt,
-	)
-	return i, err
+func (q *Queries) ListActiveUserKeys(ctx context.Context) ([]UserKeys, error) {
+	rows, err := q.db.Query(ctx, listActiveUserKeys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []UserKeys{}
+	for rows.Next() {
+		var i UserKeys
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.PublicKey,
+			&i.DeviceName,
+			&i.CreatedAt,
+			&i.RevokedAt,
+			&i.Fingerprint,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listUserKeys = `-- name: ListUserKeys :many
-SELECT id, user_id, public_key, fingerprint, device_name, created_at, revoked_at
+SELECT id, user_id, public_key, device_name, created_at, revoked_at, fingerprint
 FROM user_keys
 WHERE user_id = $1
   AND revoked_at IS NULL
@@ -348,45 +388,10 @@ func (q *Queries) ListUserKeys(ctx context.Context, userID int64) ([]UserKeys, e
 			&i.ID,
 			&i.UserID,
 			&i.PublicKey,
-			&i.Fingerprint,
 			&i.DeviceName,
 			&i.CreatedAt,
 			&i.RevokedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listActiveUserKeys = `-- name: ListActiveUserKeys :many
-SELECT id, user_id, public_key, fingerprint, device_name, created_at, revoked_at
-FROM user_keys
-WHERE revoked_at IS NULL
-ORDER BY created_at DESC
-`
-
-func (q *Queries) ListActiveUserKeys(ctx context.Context) ([]UserKeys, error) {
-	rows, err := q.db.Query(ctx, listActiveUserKeys)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []UserKeys{}
-	for rows.Next() {
-		var i UserKeys
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.PublicKey,
 			&i.Fingerprint,
-			&i.DeviceName,
-			&i.CreatedAt,
-			&i.RevokedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -406,8 +411,8 @@ WHERE id = $1
 `
 
 type UpdateUserKeyFingerprintParams struct {
-	ID          int64  `json:"id"`
-	Fingerprint string `json:"fingerprint"`
+	ID          int64       `json:"id"`
+	Fingerprint pgtype.Text `json:"fingerprint"`
 }
 
 func (q *Queries) UpdateUserKeyFingerprint(ctx context.Context, arg UpdateUserKeyFingerprintParams) error {

@@ -9,9 +9,9 @@ import (
 )
 
 var (
-	ErrInvalidSignature = errors.New("invalid signature")
-	ErrExpiredTimestamp = errors.New("expired timestamp")
-	ErrNonceReplayed    = errors.New("nonce already used")
+	ErrInvalidSignature   = errors.New("invalid signature")
+	ErrExpiredTimestamp   = errors.New("expired timestamp")
+	ErrNonceReplayed      = errors.New("nonce already used")
 	ErrNonceStoreRequired = errors.New("nonce store required")
 )
 
@@ -26,6 +26,14 @@ type Verifier struct {
 
 // Verify checks signature validity, timestamp freshness, and nonce replay.
 func (v Verifier) Verify(ctx context.Context, pub ed25519.PublicKey, payload Payload, sig []byte) error {
+	if err := v.VerifySignature(pub, payload, sig); err != nil {
+		return err
+	}
+	return v.ReserveNonce(ctx, payload.Nonce)
+}
+
+// VerifySignature checks signature validity and timestamp freshness without reserving the nonce.
+func (v Verifier) VerifySignature(pub ed25519.PublicKey, payload Payload, sig []byte) error {
 	if len(pub) != ed25519.PublicKeySize {
 		return fmt.Errorf("%w: invalid public key", ErrInvalidSignature)
 	}
@@ -47,10 +55,15 @@ func (v Verifier) Verify(ctx context.Context, pub ed25519.PublicKey, payload Pay
 	if !freshWithin(now, payload.Timestamp.UTC(), maxSkew) {
 		return ErrExpiredTimestamp
 	}
+	return nil
+}
+
+// ReserveNonce marks the nonce as used.
+func (v Verifier) ReserveNonce(ctx context.Context, nonce string) error {
 	if v.Nonces == nil {
 		return ErrNonceStoreRequired
 	}
-	reserved, err := v.Nonces.ReserveNonce(ctx, payload.Nonce)
+	reserved, err := v.Nonces.ReserveNonce(ctx, nonce)
 	if err != nil {
 		return fmt.Errorf("reserve nonce: %w", err)
 	}

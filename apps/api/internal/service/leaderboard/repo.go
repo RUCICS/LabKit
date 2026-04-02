@@ -2,9 +2,12 @@ package leaderboard
 
 import (
 	"context"
+	"time"
 
 	dbpkg "labkit.local/packages/go/db"
 	"labkit.local/packages/go/db/sqlc"
+
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -35,4 +38,13 @@ func (r *repo) ListScoresByLab(ctx context.Context, labID string) ([]sqlc.Scores
 
 func (r *repo) ListLabProfilesByLab(ctx context.Context, labID string) ([]sqlc.LabProfiles, error) {
 	return r.store.ListLabProfilesByLab(ctx, labID)
+}
+
+func (r *repo) CountSubmissionQuotaUsage(ctx context.Context, userID int64, labID string, start, end time.Time) (int64, error) {
+	return r.store.CountSubmissionQuotaUsage(ctx, sqlc.CountSubmissionQuotaUsageParams{
+		UserID:      userID,
+		LabID:       labID,
+		CreatedAt:   pgtype.Timestamptz{Time: start, Valid: true},
+		CreatedAt_2: pgtype.Timestamptz{Time: end, Valid: true},
+	})
 }

@@ -12,6 +12,35 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countSubmissionQuotaUsage = `-- name: CountSubmissionQuotaUsage :one
+SELECT COUNT(*)
+FROM submissions
+WHERE user_id = $1
+  AND lab_id = $2
+  AND created_at >= $3
+  AND created_at < $4
+  AND quota_state IN ('pending', 'charged')
+`
+
+type CountSubmissionQuotaUsageParams struct {
+	UserID      int64              `json:"user_id"`
+	LabID       string             `json:"lab_id"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	CreatedAt_2 pgtype.Timestamptz `json:"created_at_2"`
+}
+
+func (q *Queries) CountSubmissionQuotaUsage(ctx context.Context, arg CountSubmissionQuotaUsageParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countSubmissionQuotaUsage,
+		arg.UserID,
+		arg.LabID,
+		arg.CreatedAt,
+		arg.CreatedAt_2,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createScore = `-- name: CreateScore :exec
 INSERT INTO scores (submission_id, metric_id, value)
 VALUES ($1, $2, $3)
@@ -39,7 +68,7 @@ VALUES (
     $1, $2, $3, $4, $5, $6,
     $7, $8, $9, $10, $11, $12
 )
-RETURNING id, user_id, lab_id, key_id, artifact_key, content_hash, status, verdict, message, detail, image_digest, started_at, finished_at, created_at
+RETURNING id, user_id, lab_id, key_id, artifact_key, content_hash, status, verdict, message, detail, image_digest, started_at, finished_at, created_at, quota_state
 `
 
 type CreateSubmissionParams struct {
@@ -88,12 +117,13 @@ func (q *Queries) CreateSubmission(ctx context.Context, arg CreateSubmissionPara
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.CreatedAt,
+		&i.QuotaState,
 	)
 	return i, err
 }
 
 const getLatestScoredSubmissionByUserLab = `-- name: GetLatestScoredSubmissionByUserLab :one
-SELECT id, user_id, lab_id, key_id, artifact_key, content_hash, status, verdict, message, detail, image_digest, started_at, finished_at, created_at
+SELECT id, user_id, lab_id, key_id, artifact_key, content_hash, status, verdict, message, detail, image_digest, started_at, finished_at, created_at, quota_state
 FROM submissions
 WHERE user_id = $1
   AND lab_id = $2
@@ -125,12 +155,50 @@ func (q *Queries) GetLatestScoredSubmissionByUserLab(ctx context.Context, arg Ge
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.CreatedAt,
+		&i.QuotaState,
+	)
+	return i, err
+}
+
+const getLatestSubmissionByUserLab = `-- name: GetLatestSubmissionByUserLab :one
+SELECT id, user_id, lab_id, key_id, artifact_key, content_hash, status, verdict, message, detail, image_digest, started_at, finished_at, created_at, quota_state
+FROM submissions
+WHERE user_id = $1
+  AND lab_id = $2
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+type GetLatestSubmissionByUserLabParams struct {
+	UserID int64  `json:"user_id"`
+	LabID  string `json:"lab_id"`
+}
+
+func (q *Queries) GetLatestSubmissionByUserLab(ctx context.Context, arg GetLatestSubmissionByUserLabParams) (Submissions, error) {
+	row := q.db.QueryRow(ctx, getLatestSubmissionByUserLab, arg.UserID, arg.LabID)
+	var i Submissions
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.LabID,
+		&i.KeyID,
+		&i.ArtifactKey,
+		&i.ContentHash,
+		&i.Status,
+		&i.Verdict,
+		&i.Message,
+		&i.Detail,
+		&i.ImageDigest,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.CreatedAt,
+		&i.QuotaState,
 	)
 	return i, err
 }
 
 const getSubmission = `-- name: GetSubmission :one
-SELECT id, user_id, lab_id, key_id, artifact_key, content_hash, status, verdict, message, detail, image_digest, started_at, finished_at, created_at
+SELECT id, user_id, lab_id, key_id, artifact_key, content_hash, status, verdict, message, detail, image_digest, started_at, finished_at, created_at, quota_state
 FROM submissions
 WHERE id = $1
 LIMIT 1
@@ -154,6 +222,7 @@ func (q *Queries) GetSubmission(ctx context.Context, id uuid.UUID) (Submissions,
 		&i.StartedAt,
 		&i.FinishedAt,
 		&i.CreatedAt,
+		&i.QuotaState,
 	)
 	return i, err
 }
@@ -186,7 +255,7 @@ func (q *Queries) ListScoresBySubmission(ctx context.Context, submissionID uuid.
 }
 
 const listSubmissionsByUserLab = `-- name: ListSubmissionsByUserLab :many
-SELECT id, user_id, lab_id, key_id, artifact_key, content_hash, status, verdict, message, detail, image_digest, started_at, finished_at, created_at
+SELECT id, user_id, lab_id, key_id, artifact_key, content_hash, status, verdict, message, detail, image_digest, started_at, finished_at, created_at, quota_state
 FROM submissions
 WHERE user_id = $1 AND lab_id = $2
 ORDER BY created_at DESC
@@ -221,6 +290,7 @@ func (q *Queries) ListSubmissionsByUserLab(ctx context.Context, arg ListSubmissi
 			&i.StartedAt,
 			&i.FinishedAt,
 			&i.CreatedAt,
+			&i.QuotaState,
 		); err != nil {
 			return nil, err
 		}
@@ -230,6 +300,22 @@ func (q *Queries) ListSubmissionsByUserLab(ctx context.Context, arg ListSubmissi
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateSubmissionQuotaState = `-- name: UpdateSubmissionQuotaState :exec
+UPDATE submissions
+SET quota_state = $2
+WHERE id = $1
+`
+
+type UpdateSubmissionQuotaStateParams struct {
+	ID         uuid.UUID `json:"id"`
+	QuotaState string    `json:"quota_state"`
+}
+
+func (q *Queries) UpdateSubmissionQuotaState(ctx context.Context, arg UpdateSubmissionQuotaStateParams) error {
+	_, err := q.db.Exec(ctx, updateSubmissionQuotaState, arg.ID, arg.QuotaState)
+	return err
 }
 
 const updateSubmissionResult = `-- name: UpdateSubmissionResult :exec

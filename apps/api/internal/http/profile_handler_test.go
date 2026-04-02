@@ -30,6 +30,7 @@ import (
 func TestHistoryHandlerListsSubmissionHistory(t *testing.T) {
 	repo := newPersonalTestRepo(t, true)
 	svc := personal.NewService(repo)
+	svc.SetNow(func() time.Time { return time.Date(2026, 3, 31, 13, 30, 0, 0, time.UTC) })
 	handler := &HistoryHandler{Service: svc}
 
 	rr := httptest.NewRecorder()
@@ -45,6 +46,7 @@ func TestHistoryHandlerListsSubmissionHistory(t *testing.T) {
 
 	var payload struct {
 		Submissions []personal.HistoryItem `json:"submissions"`
+		Quota       map[string]any         `json:"quota"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
@@ -58,11 +60,18 @@ func TestHistoryHandlerListsSubmissionHistory(t *testing.T) {
 	if payload.Submissions[0].Status != "queued" {
 		t.Fatalf("first submission status = %q, want %q", payload.Submissions[0].Status, "queued")
 	}
+	if payload.Quota == nil {
+		t.Fatal("quota = nil, want summary")
+	}
+	if payload.Quota["left"] != float64(1) {
+		t.Fatalf("quota.left = %#v, want 1", payload.Quota["left"])
+	}
 }
 
 func TestHistoryHandlerFetchesSubmissionDetailWithScores(t *testing.T) {
 	repo := newPersonalTestRepo(t, true)
 	svc := personal.NewService(repo)
+	svc.SetNow(func() time.Time { return time.Date(2026, 3, 31, 13, 30, 0, 0, time.UTC) })
 	handler := &HistoryHandler{Service: svc}
 
 	rr := httptest.NewRecorder()
@@ -89,6 +98,9 @@ func TestHistoryHandlerFetchesSubmissionDetailWithScores(t *testing.T) {
 	}
 	if payload.Scores[0].MetricID != "latency" {
 		t.Fatalf("first score metric = %q, want %q", payload.Scores[0].MetricID, "latency")
+	}
+	if payload.Quota == nil || payload.Quota.Left != 1 {
+		t.Fatalf("quota = %#v, want left=1", payload.Quota)
 	}
 }
 
@@ -494,6 +506,7 @@ func newPersonalTestRepo(t *testing.T, pick bool) *personalTestRepo {
 				LabID:       "sorting",
 				KeyID:       11,
 				Status:      "done",
+				QuotaState:  "charged",
 				Verdict:     pgtype.Text{String: "scored", Valid: true},
 				Message:     pgtype.Text{String: "all good", Valid: true},
 				Detail:      []byte(`{"format":"markdown","content":"great"}`),
@@ -507,6 +520,7 @@ func newPersonalTestRepo(t *testing.T, pick bool) *personalTestRepo {
 				UserID:      7,
 				LabID:       "sorting",
 				Status:      "queued",
+				QuotaState:  "pending",
 				ContentHash: "hash-b",
 				ArtifactKey: "sorting/7/b.tar.gz",
 				CreatedAt:   pgtype.Timestamptz{Time: time.Date(2026, 3, 31, 13, 0, 0, 0, time.UTC), Valid: true},
@@ -516,6 +530,7 @@ func newPersonalTestRepo(t *testing.T, pick bool) *personalTestRepo {
 				UserID:      8,
 				LabID:       "sorting",
 				Status:      "done",
+				QuotaState:  "charged",
 				Verdict:     pgtype.Text{String: "scored", Valid: true},
 				Message:     pgtype.Text{String: "other user", Valid: true},
 				ContentHash: "hash-c",
