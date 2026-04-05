@@ -16,6 +16,7 @@ type DeviceAuthRequests struct {
 	DeviceCode string             `json:"device_code"`
 	UserCode   string             `json:"user_code"`
 	PublicKey  string             `json:"public_key"`
+	DeviceName string             `json:"device_name"`
 	StudentID  pgtype.Text        `json:"student_id"`
 	OauthState pgtype.Text        `json:"oauth_state"`
 	Status     string             `json:"status"`

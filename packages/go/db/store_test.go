@@ -10,6 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 func TestGeneratedQueriesExposeKeyHelpers(t *testing.T) {
@@ -136,6 +137,36 @@ func TestUpdateSubmissionQuotaStateRejectsInvalidValue(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("UpdateSubmissionQuotaState() error = nil, want constraint violation")
+	}
+}
+
+func TestCreateUserKeyAllowsReusingPublicKeyAfterRevoke(t *testing.T) {
+	ctx := context.Background()
+	pool := openTestPool(t, ctx)
+	resetTestDatabase(t, ctx, pool)
+
+	store := New(pool)
+	if err := store.DeleteUserKey(ctx, sqlc.DeleteUserKeyParams{
+		ID:     1,
+		UserID: 1,
+	}); err != nil {
+		t.Fatalf("DeleteUserKey() error = %v", err)
+	}
+
+	row, err := store.CreateUserKey(ctx, sqlc.CreateUserKeyParams{
+		UserID:      1,
+		PublicKey:   "pk-1",
+		Fingerprint: pgtype.Text{String: "fp-1", Valid: true},
+		DeviceName:  "device-1b",
+	})
+	if err != nil {
+		t.Fatalf("CreateUserKey() error = %v", err)
+	}
+	if got, want := row.PublicKey, "pk-1"; got != want {
+		t.Fatalf("PublicKey = %q, want %q", got, want)
+	}
+	if got, want := row.DeviceName, "device-1b"; got != want {
+		t.Fatalf("DeviceName = %q, want %q", got, want)
 	}
 }
 

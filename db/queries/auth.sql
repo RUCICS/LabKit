@@ -61,8 +61,8 @@ WHERE id = $1
   AND revoked_at IS NULL;
 
 -- name: CreateDeviceAuthRequest :one
-INSERT INTO device_auth_requests (device_code, user_code, public_key, student_id, oauth_state, status, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO device_auth_requests (device_code, user_code, public_key, device_name, student_id, oauth_state, status, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
 -- name: GetDeviceAuthRequestByDeviceCode :one

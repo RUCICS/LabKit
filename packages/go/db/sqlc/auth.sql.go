@@ -70,15 +70,16 @@ func (q *Queries) CompleteDeviceAuthRequest(ctx context.Context, arg CompleteDev
 }
 
 const createDeviceAuthRequest = `-- name: CreateDeviceAuthRequest :one
-INSERT INTO device_auth_requests (device_code, user_code, public_key, student_id, oauth_state, status, expires_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, device_code, user_code, public_key, student_id, oauth_state, status, expires_at, created_at
+INSERT INTO device_auth_requests (device_code, user_code, public_key, device_name, student_id, oauth_state, status, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, device_code, user_code, public_key, device_name, student_id, oauth_state, status, expires_at, created_at
 `
 
 type CreateDeviceAuthRequestParams struct {
 	DeviceCode string             `json:"device_code"`
 	UserCode   string             `json:"user_code"`
 	PublicKey  string             `json:"public_key"`
+	DeviceName string             `json:"device_name"`
 	StudentID  pgtype.Text        `json:"student_id"`
 	OauthState pgtype.Text        `json:"oauth_state"`
 	Status     string             `json:"status"`
@@ -90,6 +91,7 @@ func (q *Queries) CreateDeviceAuthRequest(ctx context.Context, arg CreateDeviceA
 		arg.DeviceCode,
 		arg.UserCode,
 		arg.PublicKey,
+		arg.DeviceName,
 		arg.StudentID,
 		arg.OauthState,
 		arg.Status,
@@ -101,6 +103,7 @@ func (q *Queries) CreateDeviceAuthRequest(ctx context.Context, arg CreateDeviceA
 		&i.DeviceCode,
 		&i.UserCode,
 		&i.PublicKey,
+		&i.DeviceName,
 		&i.StudentID,
 		&i.OauthState,
 		&i.Status,
@@ -187,7 +190,7 @@ func (q *Queries) ExpireDeviceAuthRequests(ctx context.Context) error {
 }
 
 const getDeviceAuthRequestByDeviceCode = `-- name: GetDeviceAuthRequestByDeviceCode :one
-SELECT id, device_code, user_code, public_key, student_id, oauth_state, status, expires_at, created_at
+SELECT id, device_code, user_code, public_key, device_name, student_id, oauth_state, status, expires_at, created_at
 FROM device_auth_requests
 WHERE device_code = $1
 LIMIT 1
@@ -201,6 +204,7 @@ func (q *Queries) GetDeviceAuthRequestByDeviceCode(ctx context.Context, deviceCo
 		&i.DeviceCode,
 		&i.UserCode,
 		&i.PublicKey,
+		&i.DeviceName,
 		&i.StudentID,
 		&i.OauthState,
 		&i.Status,
@@ -211,7 +215,7 @@ func (q *Queries) GetDeviceAuthRequestByDeviceCode(ctx context.Context, deviceCo
 }
 
 const getPendingDeviceAuthRequestByOAuthState = `-- name: GetPendingDeviceAuthRequestByOAuthState :one
-SELECT id, device_code, user_code, public_key, student_id, oauth_state, status, expires_at, created_at
+SELECT id, device_code, user_code, public_key, device_name, student_id, oauth_state, status, expires_at, created_at
 FROM device_auth_requests
 WHERE oauth_state = $1 AND status = 'pending'
 LIMIT 1
@@ -225,6 +229,7 @@ func (q *Queries) GetPendingDeviceAuthRequestByOAuthState(ctx context.Context, o
 		&i.DeviceCode,
 		&i.UserCode,
 		&i.PublicKey,
+		&i.DeviceName,
 		&i.StudentID,
 		&i.OauthState,
 		&i.Status,
@@ -235,7 +240,7 @@ func (q *Queries) GetPendingDeviceAuthRequestByOAuthState(ctx context.Context, o
 }
 
 const getPendingDeviceAuthRequestByUserCode = `-- name: GetPendingDeviceAuthRequestByUserCode :one
-SELECT id, device_code, user_code, public_key, student_id, oauth_state, status, expires_at, created_at
+SELECT id, device_code, user_code, public_key, device_name, student_id, oauth_state, status, expires_at, created_at
 FROM device_auth_requests
 WHERE user_code = $1 AND status = 'pending'
 LIMIT 1
@@ -249,6 +254,7 @@ func (q *Queries) GetPendingDeviceAuthRequestByUserCode(ctx context.Context, use
 		&i.DeviceCode,
 		&i.UserCode,
 		&i.PublicKey,
+		&i.DeviceName,
 		&i.StudentID,
 		&i.OauthState,
 		&i.Status,

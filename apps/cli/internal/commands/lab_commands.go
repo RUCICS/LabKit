@@ -443,24 +443,28 @@ func runBoard(ctx context.Context, deps *Dependencies, by string) error {
 	if err != nil {
 		return err
 	}
-	lab, err := client.getLab(ctx, labID)
-	if err != nil {
-		return err
-	}
 	var board boardResponse
-	if cfg.KeyID != 0 {
-		privateKey, err := readPrivateKeyWithDeps(deps, cfg.KeyPath)
-		if err != nil {
-			return err
+	var lab labResponse
+	if err := withLineSpinner(deps, "Loading leaderboard…", func() error {
+		var fetchErr error
+		lab, fetchErr = client.getLab(ctx, labID)
+		if fetchErr != nil {
+			return fetchErr
 		}
-		board, err = client.getSignedBoard(ctx, labID, by, cfg, privateKey)
-	} else {
-		board, err = client.getBoard(ctx, labID, by)
-	}
-	if err != nil {
+		if cfg.KeyID != 0 {
+			privateKey, readErr := readPrivateKeyWithDeps(deps, cfg.KeyPath)
+			if readErr != nil {
+				return readErr
+			}
+			board, fetchErr = client.getSignedBoard(ctx, labID, by, cfg, privateKey)
+			return fetchErr
+		}
+		board, fetchErr = client.getBoard(ctx, labID, by)
+		return fetchErr
+	}); err != nil {
 		return err
 	}
-	return renderBoard(deps.Out, lab.Manifest, board)
+	return renderBoard(deps.Out, deps.BinaryName, lab.Manifest, board)
 }
 
 func runHistory(ctx context.Context, deps *Dependencies, submissionID string) error {
@@ -488,21 +492,39 @@ func runHistory(ctx context.Context, deps *Dependencies, submissionID string) er
 		return err
 	}
 	if strings.TrimSpace(submissionID) != "" {
-		lab, err := client.getLab(ctx, labID)
-		if err != nil {
-			return err
-		}
-		detail, err := client.getSubmissionDetail(ctx, labID, strings.TrimSpace(submissionID), cfg, privateKey)
-		if err != nil {
+		var (
+			lab    labResponse
+			detail submissionDetailResponse
+		)
+		if err := withLineSpinner(deps, "Loading submission…", func() error {
+			var fetchErr error
+			lab, fetchErr = client.getLab(ctx, labID)
+			if fetchErr != nil {
+				return fetchErr
+			}
+			detail, fetchErr = client.getSubmissionDetail(ctx, labID, strings.TrimSpace(submissionID), cfg, privateKey)
+			return fetchErr
+		}); err != nil {
 			return err
 		}
 		return renderSubmissionDetailView(deps.Out, lab.Manifest, detail)
 	}
-	history, err := client.getHistory(ctx, labID, cfg, privateKey)
-	if err != nil {
+	var (
+		lab     labResponse
+		history historyResponse
+	)
+	if err := withLineSpinner(deps, "Loading history…", func() error {
+		var fetchErr error
+		lab, fetchErr = client.getLab(ctx, labID)
+		if fetchErr != nil {
+			return fetchErr
+		}
+		history, fetchErr = client.getHistory(ctx, labID, cfg, privateKey)
+		return fetchErr
+	}); err != nil {
 		return err
 	}
-	return renderHistory(deps.Out, history)
+	return renderHistory(deps.Out, deps.BinaryName, lab.Manifest, history)
 }
 
 func runNick(ctx context.Context, deps *Dependencies, nickname string) error {
@@ -529,12 +551,24 @@ func runNick(ctx context.Context, deps *Dependencies, nickname string) error {
 	if err != nil {
 		return err
 	}
-	profile, err := client.updateNickname(ctx, labID, nickname, cfg, privateKey)
-	if err != nil {
+	var (
+		lab     labResponse
+		profile profileResponse
+	)
+	if err := withLineSpinner(deps, "Updating nickname…", func() error {
+		var updateErr error
+		lab, updateErr = client.getLab(ctx, labID)
+		if updateErr != nil {
+			return updateErr
+		}
+		profile, updateErr = client.updateNickname(ctx, labID, nickname, cfg, privateKey)
+		return updateErr
+	}); err != nil {
 		return err
 	}
 	theme := ui.DefaultTheme()
-	fmt.Fprintln(deps.Out, theme.SuccessStyle.Render("✓")+" "+theme.TitleStyle.Render("Nickname updated")+"  "+theme.ValueStyle.Render(profile.Nickname))
+	fmt.Fprintln(deps.Out, theme.SuccessStyle.Render("✓")+" "+theme.TitleStyle.Render("Nickname updated")+"  "+
+		theme.MutedStyle.Render(labTitleSuffix(lab.Manifest, labID))+"  "+theme.ValueStyle.Render(profile.Nickname))
 	return nil
 }
 
@@ -562,22 +596,30 @@ func runTrack(ctx context.Context, deps *Dependencies, track string) error {
 	if err != nil {
 		return err
 	}
-	lab, err := client.getLab(ctx, labID)
-	if err != nil {
-		return err
-	}
-	if !lab.Manifest.Board.Pick {
-		return fmt.Errorf("track selection is disabled")
-	}
-	if !manifestHasMetric(lab.Manifest.Metrics, track) {
-		return fmt.Errorf("invalid track")
-	}
-	profile, err := client.updateTrack(ctx, labID, track, cfg, privateKey)
-	if err != nil {
+	var (
+		lab     labResponse
+		profile profileResponse
+	)
+	if err := withLineSpinner(deps, "Updating track…", func() error {
+		var fetchErr error
+		lab, fetchErr = client.getLab(ctx, labID)
+		if fetchErr != nil {
+			return fetchErr
+		}
+		if !lab.Manifest.Board.Pick {
+			return fmt.Errorf("track selection is disabled")
+		}
+		if !manifestHasMetric(lab.Manifest.Metrics, track) {
+			return fmt.Errorf("invalid track")
+		}
+		profile, fetchErr = client.updateTrack(ctx, labID, track, cfg, privateKey)
+		return fetchErr
+	}); err != nil {
 		return err
 	}
 	theme := ui.DefaultTheme()
-	fmt.Fprintln(deps.Out, theme.SuccessStyle.Render("✓")+" "+theme.TitleStyle.Render("Track set")+"  "+theme.ValueStyle.Render(profile.Track))
+	fmt.Fprintln(deps.Out, theme.SuccessStyle.Render("✓")+" "+theme.TitleStyle.Render("Track set")+"  "+
+		theme.MutedStyle.Render(labTitleSuffix(lab.Manifest, labID))+"  "+theme.ValueStyle.Render(profile.Track))
 	return nil
 }
 
@@ -934,11 +976,12 @@ func confirmDuplicateSubmission(deps *Dependencies, live *submitLiveRenderer, la
 	return answer != "n" && answer != "no", nil
 }
 
-func renderBoard(out io.Writer, lab manifest.PublicManifest, board boardResponse) error {
+func renderBoard(out io.Writer, binaryName string, lab manifest.PublicManifest, board boardResponse) error {
 	if out == nil {
 		out = io.Discard
 	}
 	theme := ui.DefaultTheme()
+	labName := labDisplayName(lab, board.LabID)
 
 	metricSuffix := ""
 	if strings.TrimSpace(board.SelectedMetric) != "" {
@@ -946,7 +989,7 @@ func renderBoard(out io.Writer, lab manifest.PublicManifest, board boardResponse
 	}
 	count := fmt.Sprintf(" · %d participants", len(board.Rows))
 	title := theme.TitleStyle.Render("Leaderboard") +
-		theme.MutedStyle.Render(metricSuffix+count)
+		theme.MutedStyle.Render(" · "+labName+metricSuffix+count)
 
 	if len(board.Metrics) > 1 {
 		tabs := make([]string, len(board.Metrics))
@@ -967,6 +1010,15 @@ func renderBoard(out io.Writer, lab manifest.PublicManifest, board boardResponse
 	}
 	if _, err := fmt.Fprintln(out); err != nil {
 		return err
+	}
+	if len(board.Rows) == 0 {
+		if _, err := fmt.Fprintln(out, "  "+theme.MutedStyle.Render("No ranked submissions yet.")); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(out, "  "+theme.MutedStyle.Render(fmt.Sprintf("Run %s submit to put a score on the board.", displayCommandName(binaryName)))); err != nil {
+			return err
+		}
+		return renderQuotaSummary(out, board.Quota, "")
 	}
 
 	const (
@@ -1051,7 +1103,7 @@ func renderBoard(out io.Writer, lab manifest.PublicManifest, board boardResponse
 	return renderQuotaSummary(out, board.Quota, "")
 }
 
-func renderHistory(out io.Writer, history historyResponse) error {
+func renderHistory(out io.Writer, binaryName string, lab manifest.PublicManifest, history historyResponse) error {
 	if out == nil {
 		out = io.Discard
 	}
@@ -1059,9 +1111,24 @@ func renderHistory(out io.Writer, history historyResponse) error {
 	now := time.Now()
 
 	count := fmt.Sprintf("  %s", theme.MutedStyle.Render(fmt.Sprintf("%d submissions", len(history.Submissions))))
-	title := theme.TitleStyle.Render("Submission history")
+	title := theme.TitleStyle.Render("Submission history") + theme.MutedStyle.Render(labTitleSuffix(lab, ""))
 	if _, err := fmt.Fprintln(out, title+"\n"); err != nil {
 		return err
+	}
+	if len(history.Submissions) == 0 {
+		if _, err := fmt.Fprintln(out, "  "+theme.MutedStyle.Render("No submissions yet.")); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(out, "  "+theme.MutedStyle.Render(fmt.Sprintf("Run %s submit to create your first submission.", displayCommandName(binaryName)))); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(out); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(out, count); err != nil {
+			return err
+		}
+		return renderQuotaSummary(out, history.Quota, "")
 	}
 
 	const (
@@ -1174,6 +1241,31 @@ func formatScore(value float32, unit string) string {
 		return fmt.Sprintf("%g", value)
 	}
 	return fmt.Sprintf("%g%s", value, unit)
+}
+
+func labDisplayName(lab manifest.PublicManifest, fallback string) string {
+	if name := strings.TrimSpace(lab.Lab.Name); name != "" {
+		return name
+	}
+	if id := strings.TrimSpace(lab.Lab.ID); id != "" {
+		return id
+	}
+	if fallback = strings.TrimSpace(fallback); fallback != "" {
+		return fallback
+	}
+	return "Lab"
+}
+
+func labTitleSuffix(lab manifest.PublicManifest, fallback string) string {
+	return " · " + labDisplayName(lab, fallback)
+}
+
+func displayCommandName(name string) string {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return "labkit"
+	}
+	return trimmed
 }
 
 func manifestHasMetric(metrics []manifest.MetricSection, wanted string) bool {
@@ -1296,7 +1388,7 @@ func renderSubmissionFinal(out io.Writer, lab manifest.PublicManifest, detail su
 	} else {
 		prefix = theme.SuccessStyle.Render("✓")
 	}
-	titleLine := prefix + " " + theme.TitleStyle.Render("Submitted")
+	titleLine := prefix + " " + theme.TitleStyle.Render("Submitted") + theme.MutedStyle.Render(labTitleSuffix(lab, ""))
 
 	if _, err := fmt.Fprintln(out, titleLine); err != nil {
 		return err
@@ -1326,7 +1418,7 @@ func renderSubmissionDetailView(out io.Writer, lab manifest.PublicManifest, deta
 	theme := ui.DefaultTheme()
 	block, _ := submissionResultBlock(theme, detail, false)
 
-	if _, err := fmt.Fprintln(out, theme.TitleStyle.Render("Submission details")); err != nil {
+	if _, err := fmt.Fprintln(out, theme.TitleStyle.Render("Submission details")+theme.MutedStyle.Render(labTitleSuffix(lab, ""))); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintln(out); err != nil {

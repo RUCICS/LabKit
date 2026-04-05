@@ -35,6 +35,8 @@ const serverURLEnvName = "LABKIT_SERVER_URL"
 
 type Dependencies struct {
 	ConfigDir         string
+	BinaryName        string
+	DeviceName        string
 	ServerURL         string
 	ServerURLOverride string
 	Lab               string
@@ -54,15 +56,20 @@ func NewRootCommand(deps *Dependencies) *cobra.Command {
 	deps = normalizeDependencies(deps)
 
 	cmd := &cobra.Command{
-		Use:           "labkit",
-		Short:         "LabKit CLI",
+		Use:           deps.BinaryName,
+		Short:         deps.BinaryName + " CLI",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
 	}
+	cmd.SetOut(deps.Out)
+	cmd.SetErr(deps.Err)
 	cmd.PersistentFlags().StringVar(&deps.ConfigDir, "config-dir", deps.ConfigDir, "Path to the local LabKit config directory")
+	if flag := cmd.PersistentFlags().Lookup("config-dir"); flag != nil {
+		flag.DefValue = friendlyPathForHelp(deps.ConfigDir)
+	}
 	cmd.PersistentFlags().StringVar(&deps.ServerURLOverride, "server-url", deps.ServerURLOverride, "LabKit server URL")
 	cmd.PersistentFlags().StringVar(&deps.Lab, "lab", deps.Lab, "Active lab id")
 	cmd.AddCommand(NewAuthCommand(deps))
@@ -132,7 +139,7 @@ func NewAuthCommand(deps *Dependencies) *cobra.Command {
 			theme := ui.DefaultTheme()
 			printAuthKeyBanner(deps.Out, theme, keySelection.Action, serverOrigin, keySelection.Fingerprint)
 			fmt.Fprintln(deps.Out)
-			authorization, err := client.deviceAuthorize(cmd.Context(), keySelection.PublicKey)
+			authorization, err := client.deviceAuthorize(cmd.Context(), keySelection.PublicKey, deps.DeviceName)
 			if err != nil {
 				return err
 			}
@@ -245,9 +252,10 @@ func newAPIClient(baseURL string, httpClient *http.Client, now func() time.Time)
 	return &apiClient{base: base, now: now}, nil
 }
 
-func (c *apiClient) deviceAuthorize(ctx context.Context, publicKey string) (deviceAuthorizeResponse, error) {
+func (c *apiClient) deviceAuthorize(ctx context.Context, publicKey, deviceName string) (deviceAuthorizeResponse, error) {
 	req, err := c.base.NewRequest(ctx, http.MethodPost, "/api/device/authorize", map[string]string{
-		"public_key": publicKey,
+		"public_key":  publicKey,
+		"device_name": strings.TrimSpace(deviceName),
 	})
 	if err != nil {
 		return deviceAuthorizeResponse{}, err
@@ -384,6 +392,12 @@ func normalizeDependencies(deps *Dependencies) *Dependencies {
 	if deps == nil {
 		deps = &Dependencies{}
 	}
+	if strings.TrimSpace(deps.BinaryName) == "" {
+		deps.BinaryName = defaultBinaryName()
+	}
+	if strings.TrimSpace(deps.DeviceName) == "" {
+		deps.DeviceName = defaultDeviceName()
+	}
 	if deps.ConfigDir == "" {
 		deps.ConfigDir = config.ResolveDir()
 	}
@@ -421,6 +435,49 @@ func normalizeDependencies(deps *Dependencies) *Dependencies {
 		deps.ReadPassword = defaultReadPassword
 	}
 	return deps
+}
+
+func defaultBinaryName() string {
+	name := strings.TrimSpace(filepath.Base(os.Args[0]))
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		return "labkit"
+	}
+	return name
+}
+
+func friendlyPathForHelp(path string) string {
+	cleaned := filepath.Clean(strings.TrimSpace(path))
+	if cleaned == "" {
+		return ""
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return cleaned
+	}
+	home = filepath.Clean(strings.TrimSpace(home))
+	if home == "" {
+		return cleaned
+	}
+	if cleaned == home {
+		return "~"
+	}
+	prefix := home + string(filepath.Separator)
+	if strings.HasPrefix(cleaned, prefix) {
+		return "~" + string(filepath.Separator) + strings.TrimPrefix(cleaned, prefix)
+	}
+	return cleaned
+}
+
+func defaultDeviceName() string {
+	name, err := os.Hostname()
+	if err != nil {
+		return "unknown"
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "unknown"
+	}
+	return name
 }
 
 func resolveConfig(deps *Dependencies) (config.Config, error) {

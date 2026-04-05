@@ -13,7 +13,8 @@ type AuthHandler struct {
 }
 
 type createDeviceAuthRequest struct {
-	PublicKey string `json:"public_key"`
+	PublicKey  string `json:"public_key"`
+	DeviceName string `json:"device_name"`
 }
 
 func (h *AuthHandler) CreateDeviceAuthorizationRequest(w http.ResponseWriter, r *http.Request) {
@@ -27,7 +28,8 @@ func (h *AuthHandler) CreateDeviceAuthorizationRequest(w http.ResponseWriter, r 
 		return
 	}
 	result, err := h.Service.CreateDeviceAuthorizationRequest(r.Context(), authsvc.CreateDeviceAuthRequestInput{
-		PublicKey: req.PublicKey,
+		PublicKey:  req.PublicKey,
+		DeviceName: req.DeviceName,
 	})
 	if err != nil {
 		h.writeError(w, r, err)

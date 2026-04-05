@@ -21,7 +21,8 @@ func TestCreateDeviceAuthorizationRequestPersistsPendingRequest(t *testing.T) {
 	svc := newTestService(repo, &fakeOAuthClient{})
 
 	result, err := svc.CreateDeviceAuthorizationRequest(context.Background(), CreateDeviceAuthRequestInput{
-		PublicKey: testAuthorizedKey,
+		PublicKey:  testAuthorizedKey,
+		DeviceName: "student-mbp",
 	})
 	if err != nil {
 		t.Fatalf("CreateDeviceAuthorizationRequest() error = %v", err)
@@ -43,6 +44,9 @@ func TestCreateDeviceAuthorizationRequestPersistsPendingRequest(t *testing.T) {
 	}
 	if got := repo.requestsByDeviceCode["device-code"].PublicKey; got != testAuthorizedKey {
 		t.Fatalf("stored public key = %q, want %q", got, testAuthorizedKey)
+	}
+	if got := repo.requestsByDeviceCode["device-code"].DeviceName; got != "student-mbp" {
+		t.Fatalf("stored device name = %q, want %q", got, "student-mbp")
 	}
 }
 
@@ -111,6 +115,7 @@ func TestHandleOAuthCallbackExchangesCodeAndBindsPublicKeyToUser(t *testing.T) {
 		DeviceCode: "device-code",
 		UserCode:   "user-code",
 		PublicKey:  testAuthorizedKey,
+		DeviceName: "student-mbp",
 		Status:     deviceAuthPending,
 		OauthState: pgtype.Text{String: "oauth-state", Valid: true},
 	}
@@ -137,6 +142,9 @@ func TestHandleOAuthCallbackExchangesCodeAndBindsPublicKeyToUser(t *testing.T) {
 	}
 	if got := repo.keysByID[result.UserKeyID].PublicKey; got != testAuthorizedKey {
 		t.Fatalf("bound public key = %q, want %q", got, testAuthorizedKey)
+	}
+	if got := repo.keysByID[result.UserKeyID].DeviceName; got != "student-mbp" {
+		t.Fatalf("bound device name = %q, want %q", got, "student-mbp")
 	}
 	if oauth.exchangeCalls != 1 {
 		t.Fatalf("ExchangeCode called %d times, want 1", oauth.exchangeCalls)
@@ -507,6 +515,7 @@ func (r *fakeRepository) CreateDeviceAuthRequest(_ context.Context, arg sqlc.Cre
 		DeviceCode: arg.DeviceCode,
 		UserCode:   arg.UserCode,
 		PublicKey:  arg.PublicKey,
+		DeviceName: arg.DeviceName,
 		Status:     arg.Status,
 		OauthState: arg.OauthState,
 		ExpiresAt:  arg.ExpiresAt,

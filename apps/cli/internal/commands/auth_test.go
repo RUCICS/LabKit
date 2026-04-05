@@ -24,6 +24,39 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+func TestRootHelpUsesBinaryNameAndFriendlyConfigDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	deps := &Dependencies{
+		BinaryName: "colab",
+		Out:        &stdout,
+		Err:        &stderr,
+	}
+
+	cmd := NewRootCommand(deps)
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"--help"})
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("Execute() error = %v stderr=%s", err, stderr.String())
+	}
+
+	got := stdout.String()
+	for _, want := range []string{"colab CLI", "Usage:\n  colab [flags]", "Use \"colab [command] --help\"", "~/.config/labkit"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("help = %q, want %q", got, want)
+		}
+	}
+	if strings.Contains(got, home) {
+		t.Fatalf("help = %q, want home path collapsed in default config-dir display", got)
+	}
+}
+
 func TestAuthCommandCreatesNewServerKeyAndWritesKeyring(t *testing.T) {
 	configDir := t.TempDir()
 
@@ -34,13 +67,17 @@ func TestAuthCommandCreatesNewServerKeyAndWritesKeyring(t *testing.T) {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/device/authorize":
 			authorizeCalls++
 			var req struct {
-				PublicKey string `json:"public_key"`
+				PublicKey  string `json:"public_key"`
+				DeviceName string `json:"device_name"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				t.Fatalf("decode authorize body: %v", err)
 			}
 			if req.PublicKey == "" {
 				t.Fatal("public_key was empty")
+			}
+			if req.DeviceName != "test-host" {
+				t.Fatalf("device_name = %q, want %q", req.DeviceName, "test-host")
 			}
 			if _, _, _, _, err := ssh.ParseAuthorizedKey([]byte(req.PublicKey)); err != nil {
 				t.Fatalf("public key was invalid authorized-key format: %v", err)
@@ -87,6 +124,7 @@ func TestAuthCommandCreatesNewServerKeyAndWritesKeyring(t *testing.T) {
 		Now:               func() time.Time { return time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC) },
 		Sleep:             func(time.Duration) {},
 		PollInterval:      time.Millisecond,
+		DeviceName:        "test-host",
 		Out:               &stdout,
 		Err:               &stderr,
 	}
@@ -842,11 +880,15 @@ func TestKeysCommandsListAndRevokeSignedRequests(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("keys execute error = %v", err)
 	}
-	if !strings.Contains(stdout.String(), "Bound keys") {
-		t.Fatalf("keys output = %q, want structured heading", stdout.String())
+	plain := stripANSIForTest(stdout.String())
+	if !strings.Contains(plain, "Loading keys…") {
+		t.Fatalf("keys output = %q, want loading line", plain)
 	}
-	if !strings.Contains(stdout.String(), "laptop") {
-		t.Fatalf("keys output = %q, want device name", stdout.String())
+	if !strings.Contains(plain, "Bound keys") {
+		t.Fatalf("keys output = %q, want structured heading", plain)
+	}
+	if !strings.Contains(plain, "laptop") {
+		t.Fatalf("keys output = %q, want device name", plain)
 	}
 
 	stdout.Reset()
@@ -855,8 +897,11 @@ func TestKeysCommandsListAndRevokeSignedRequests(t *testing.T) {
 	if err := root.Execute(); err != nil {
 		t.Fatalf("revoke execute error = %v", err)
 	}
-	if !strings.Contains(stdout.String(), "✓ Revoked  key 11") {
-		t.Fatalf("revoke output = %q, want success confirmation", stdout.String())
+	plain = stripANSIForTest(stdout.String())
+	for _, want := range []string{"Revoking key…", "✓ Revoked  key 11"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("revoke output = %q, want %q", plain, want)
+		}
 	}
 }
 

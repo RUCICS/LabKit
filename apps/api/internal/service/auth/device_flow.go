@@ -54,7 +54,8 @@ type Service struct {
 }
 
 type CreateDeviceAuthRequestInput struct {
-	PublicKey string
+	PublicKey  string
+	DeviceName string
 }
 
 type CreateDeviceAuthRequestResult struct {
@@ -116,6 +117,10 @@ func (s *Service) CreateDeviceAuthorizationRequest(ctx context.Context, in Creat
 	if strings.TrimSpace(in.PublicKey) == "" {
 		return CreateDeviceAuthRequestResult{}, ErrInvalidRequest
 	}
+	deviceName := strings.TrimSpace(in.DeviceName)
+	if deviceName == "" {
+		deviceName = defaultDeviceName
+	}
 	deviceCode, err := s.newDeviceCode()
 	if err != nil {
 		return CreateDeviceAuthRequestResult{}, err
@@ -137,6 +142,7 @@ func (s *Service) CreateDeviceAuthorizationRequest(ctx context.Context, in Creat
 		DeviceCode: deviceCode,
 		UserCode:   userCode,
 		PublicKey:  in.PublicKey,
+		DeviceName: deviceName,
 		StudentID:  pgtype.Text{},
 		OauthState: pgtype.Text{String: state, Valid: true},
 		Status:     deviceAuthPending,
@@ -255,6 +261,9 @@ func (s *Service) DevBindDeviceAuthorizationRequest(ctx context.Context, in DevB
 
 	deviceName := strings.TrimSpace(in.DeviceName)
 	if deviceName == "" {
+		deviceName = strings.TrimSpace(request.DeviceName)
+	}
+	if deviceName == "" {
 		deviceName = defaultDeviceName
 	}
 
@@ -320,12 +329,16 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, state, code string) (
 	if err != nil {
 		return OAuthCallbackResult{}, ErrInvalidRequest
 	}
+	deviceName := strings.TrimSpace(request.DeviceName)
+	if deviceName == "" {
+		deviceName = defaultDeviceName
+	}
 	completed, err := s.repo.CompleteDeviceAuthRequest(ctx, sqlc.CompleteDeviceAuthRequestParams{
 		DeviceCode:  request.DeviceCode,
 		OauthState:  pgtype.Text{String: state, Valid: state != ""},
 		StudentID:   pgtype.Text{String: studentID, Valid: studentID != ""},
 		Fingerprint: pgtype.Text{String: fingerprint, Valid: fingerprint != ""},
-		DeviceName:  defaultDeviceName,
+		DeviceName:  deviceName,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

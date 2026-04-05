@@ -162,7 +162,7 @@ func TestRenderBoardShowsRankBadgesAndBgFill(t *testing.T) {
 			{Rank: 2, Nickname: "bob", Scores: []boardScoreResponse{{MetricID: "score", Value: 80.0}}, UpdatedAt: time.Now().Add(-5 * time.Hour)},
 		},
 	}
-	if err := renderBoard(&buf, lab, board); err != nil {
+	if err := renderBoard(&buf, "labkit", lab, board); err != nil {
 		t.Fatalf("error = %v", err)
 	}
 	plain := stripANSIForTest(buf.String())
@@ -189,7 +189,7 @@ func TestRenderBoardHighlightsCurrentUserRow(t *testing.T) {
 			{Rank: 4, Nickname: "huanc", CurrentUser: true, Scores: []boardScoreResponse{{MetricID: "score", Value: 88.3}}, UpdatedAt: time.Now().Add(-1 * time.Hour)},
 		},
 	}
-	if err := renderBoard(&buf, lab, board); err != nil {
+	if err := renderBoard(&buf, "labkit", lab, board); err != nil {
 		t.Fatalf("error = %v", err)
 	}
 	got := buf.String()
@@ -214,7 +214,7 @@ func TestRenderBoardKeepsBadgeForCurrentUserTopThree(t *testing.T) {
 			{Rank: 2, Nickname: "bob", Scores: []boardScoreResponse{{MetricID: "score", Value: 80.0}}, UpdatedAt: time.Now().Add(-1 * time.Hour)},
 		},
 	}
-	if err := renderBoard(&buf, lab, board); err != nil {
+	if err := renderBoard(&buf, "labkit", lab, board); err != nil {
 		t.Fatalf("error = %v", err)
 	}
 
@@ -259,7 +259,8 @@ func TestRenderHistoryShowsColoredStatusAndRelativeTime(t *testing.T) {
 			{ID: "def", Status: "failed", Verdict: "failed", CreatedAt: now.Add(-5 * time.Hour)},
 		},
 	}
-	if err := renderHistory(&buf, history); err != nil {
+	lab := manifest.PublicManifest{Lab: manifest.LabSection{ID: "sorting", Name: "Sorting"}}
+	if err := renderHistory(&buf, "labkit", lab, history); err != nil {
 		t.Fatalf("error = %v", err)
 	}
 	got := buf.String()
@@ -278,7 +279,8 @@ func TestRenderHistoryShowsFullSubmissionID(t *testing.T) {
 			{ID: submissionID, Status: "completed", Verdict: "scored", CreatedAt: time.Now().Add(-1 * time.Hour)},
 		},
 	}
-	if err := renderHistory(&buf, history); err != nil {
+	lab := manifest.PublicManifest{Lab: manifest.LabSection{ID: "sorting", Name: "Sorting"}}
+	if err := renderHistory(&buf, "labkit", lab, history); err != nil {
 		t.Fatalf("error = %v", err)
 	}
 	if !strings.Contains(buf.String(), submissionID) {
@@ -1554,6 +1556,7 @@ func TestBoardCommandDisplaysRowsByRequestedMetric(t *testing.T) {
 	deps := &Dependencies{
 		ServerURLOverride: srv.URL,
 		HTTPClient:        srv.Client(),
+		BinaryName:        "colab",
 		Out:               &stdout,
 		Err:               io.Discard,
 	}
@@ -1564,19 +1567,23 @@ func TestBoardCommandDisplaysRowsByRequestedMetric(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 
-	if !strings.Contains(stdout.String(), "Leaderboard") {
-		t.Fatalf("stdout = %q, want structured board heading", stdout.String())
+	plain := stripANSIForTest(stdout.String())
+	if !strings.Contains(plain, "Loading leaderboard…") {
+		t.Fatalf("stdout = %q, want loading hint", plain)
+	}
+	if !strings.Contains(plain, "Leaderboard · Sorting") {
+		t.Fatalf("stdout = %q, want lab-aware board heading", plain)
 	}
 	for _, want := range []string{"sorted by latency", "Throughput", "Latency", "1ST", "2ND", "ago"} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		if !strings.Contains(plain, want) {
+			t.Fatalf("stdout = %q, want %q", plain, want)
 		}
 	}
-	if strings.Index(stdout.String(), "Bob") > strings.Index(stdout.String(), "Ada") {
-		t.Fatalf("stdout row order = %q, want Bob before Ada", stdout.String())
+	if strings.Index(plain, "Bob") > strings.Index(plain, "Ada") {
+		t.Fatalf("stdout row order = %q, want Bob before Ada", plain)
 	}
-	if strings.Contains(stdout.String(), "Selected metric:") {
-		t.Fatalf("stdout = %q, want new tab-based metric header", stdout.String())
+	if strings.Contains(plain, "Selected metric:") {
+		t.Fatalf("stdout = %q, want new tab-based metric header", plain)
 	}
 }
 
@@ -1641,12 +1648,13 @@ func TestBoardCommandUsesSignedRequestAndHighlightsCurrentUser(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 
+	plain := stripANSIForTest(stdout.String())
 	for _, want := range []string{"you (Bob)", "sorted by latency"} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		if !strings.Contains(plain, want) {
+			t.Fatalf("stdout = %q, want %q", plain, want)
 		}
 	}
-	if strings.Contains(stripANSIForTest(stdout.String()), "▏") {
+	if strings.Contains(plain, "▏") {
 		t.Fatalf("stdout = %q, want no dedicated current-user marker", stdout.String())
 	}
 }
@@ -1743,6 +1751,7 @@ func TestBoardCommandOmitsQuotaSummaryWhenAnonymous(t *testing.T) {
 	deps := &Dependencies{
 		ServerURLOverride: srv.URL,
 		HTTPClient:        srv.Client(),
+		BinaryName:        "colab",
 		Out:               &stdout,
 		Err:               io.Discard,
 	}
@@ -1758,6 +1767,57 @@ func TestBoardCommandOmitsQuotaSummaryWhenAnonymous(t *testing.T) {
 	}
 }
 
+func TestBoardCommandShowsEmptyState(t *testing.T) {
+	var stdout bytes.Buffer
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
+			writeLabManifest(t, w, manifest.Manifest{
+				Lab:    manifest.LabSection{ID: "sorting", Name: "Sorting"},
+				Submit: manifest.SubmitSection{Files: []string{"main.c"}},
+				Eval:   manifest.EvalSection{Image: "ghcr.io/labkit/sorting:1"},
+				Quota:  manifest.QuotaSection{Daily: 3},
+				Metrics: []manifest.MetricSection{
+					{ID: "throughput", Name: "Throughput", Sort: manifest.MetricSortDesc},
+				},
+				Board:    manifest.BoardSection{RankBy: "throughput"},
+				Schedule: manifest.ScheduleSection{Open: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Close: time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting/board":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"lab_id":          "sorting",
+				"selected_metric": "throughput",
+				"metrics":         []map[string]any{{"id": "throughput", "name": "Throughput", "sort": "desc", "selected": true}},
+				"rows":            []map[string]any{},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	deps := &Dependencies{
+		ServerURLOverride: srv.URL,
+		HTTPClient:        srv.Client(),
+		BinaryName:        "colab",
+		Out:               &stdout,
+		Err:               io.Discard,
+	}
+
+	cmd := NewRootCommand(deps)
+	cmd.SetArgs([]string{"--lab", "sorting", "board"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	plain := stripANSIForTest(stdout.String())
+	for _, want := range []string{"Leaderboard · Sorting", "No ranked submissions yet", "Run colab submit"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("stdout = %q, want %q", plain, want)
+		}
+	}
+}
+
 func TestHistoryCommandRendersSubmissionList(t *testing.T) {
 	configDir := t.TempDir()
 	keyPath := filepath.Join(configDir, "id_ed25519")
@@ -1769,6 +1829,18 @@ func TestHistoryCommandRendersSubmissionList(t *testing.T) {
 	var stdout bytes.Buffer
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
+			writeLabManifest(t, w, manifest.Manifest{
+				Lab:    manifest.LabSection{ID: "sorting", Name: "Sorting"},
+				Submit: manifest.SubmitSection{Files: []string{"main.c"}},
+				Eval:   manifest.EvalSection{Image: "ghcr.io/labkit/sorting:1"},
+				Quota:  manifest.QuotaSection{Daily: 3},
+				Metrics: []manifest.MetricSection{
+					{ID: "throughput", Name: "Throughput", Sort: manifest.MetricSortDesc},
+				},
+				Board:    manifest.BoardSection{RankBy: "throughput"},
+				Schedule: manifest.ScheduleSection{Open: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Close: time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)},
+			})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting/history":
 			if err := verifySignedRequest(t, r, "/api/labs/sorting/history", nil, priv.Public().(ed25519.PublicKey)); err != nil {
 				t.Fatalf("verifySignedRequest() error = %v", err)
@@ -1814,12 +1886,16 @@ func TestHistoryCommandRendersSubmissionList(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 
-	if !strings.Contains(stdout.String(), "Submission history") {
-		t.Fatalf("stdout = %q, want structured history heading", stdout.String())
+	plain := stripANSIForTest(stdout.String())
+	if !strings.Contains(plain, "Loading history…") {
+		t.Fatalf("stdout = %q, want loading hint", plain)
+	}
+	if !strings.Contains(plain, "Submission history · Sorting") {
+		t.Fatalf("stdout = %q, want lab-aware history heading", plain)
 	}
 	for _, want := range []string{"queued", "scored", "ago", "2 submissions", "22222222-2", "11111111-1"} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+		if !strings.Contains(plain, want) {
+			t.Fatalf("stdout = %q, want %q", plain, want)
 		}
 	}
 }
@@ -1835,6 +1911,18 @@ func TestHistoryCommandRendersQuotaSummary(t *testing.T) {
 	var stdout bytes.Buffer
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
+			writeLabManifest(t, w, manifest.Manifest{
+				Lab:    manifest.LabSection{ID: "sorting", Name: "Sorting"},
+				Submit: manifest.SubmitSection{Files: []string{"main.c"}},
+				Eval:   manifest.EvalSection{Image: "ghcr.io/labkit/sorting:1"},
+				Quota:  manifest.QuotaSection{Daily: 3},
+				Metrics: []manifest.MetricSection{
+					{ID: "throughput", Name: "Throughput", Sort: manifest.MetricSortDesc},
+				},
+				Board:    manifest.BoardSection{RankBy: "throughput"},
+				Schedule: manifest.ScheduleSection{Open: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Close: time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)},
+			})
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting/history":
 			if err := verifySignedRequest(t, r, "/api/labs/sorting/history", nil, priv.Public().(ed25519.PublicKey)); err != nil {
 				t.Fatalf("verifySignedRequest() error = %v", err)
@@ -1872,6 +1960,65 @@ func TestHistoryCommandRendersQuotaSummary(t *testing.T) {
 
 	if !strings.Contains(stripANSIForTest(stdout.String()), "Quota  1 left today · 2/3 used") {
 		t.Fatalf("stdout = %q, want quota summary", stripANSIForTest(stdout.String()))
+	}
+}
+
+func TestHistoryCommandShowsEmptyState(t *testing.T) {
+	configDir := t.TempDir()
+	keyPath := filepath.Join(configDir, "id_ed25519")
+	_, priv := mustWriteConfigAndKey(t, configDir, keyPath, "", 11)
+	if err := keycrypto.WritePrivateKey(keyPath, priv); err != nil {
+		t.Fatalf("WritePrivateKey() error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
+			writeLabManifest(t, w, manifest.Manifest{
+				Lab:    manifest.LabSection{ID: "sorting", Name: "Sorting"},
+				Submit: manifest.SubmitSection{Files: []string{"main.c"}},
+				Eval:   manifest.EvalSection{Image: "ghcr.io/labkit/sorting:1"},
+				Quota:  manifest.QuotaSection{Daily: 3},
+				Metrics: []manifest.MetricSection{
+					{ID: "throughput", Name: "Throughput", Sort: manifest.MetricSortDesc},
+				},
+				Board:    manifest.BoardSection{RankBy: "throughput"},
+				Schedule: manifest.ScheduleSection{Open: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Close: time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting/history":
+			if err := verifySignedRequest(t, r, "/api/labs/sorting/history", nil, priv.Public().(ed25519.PublicKey)); err != nil {
+				t.Fatalf("verifySignedRequest() error = %v", err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"submissions": []map[string]any{},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("LABKIT_SERVER_URL", srv.URL)
+
+	deps := &Dependencies{
+		ConfigDir:  configDir,
+		HTTPClient: srv.Client(),
+		BinaryName: "colab",
+		Out:        &stdout,
+		Err:        io.Discard,
+	}
+
+	cmd := NewRootCommand(deps)
+	cmd.SetArgs([]string{"--lab", "sorting", "history"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+
+	plain := stripANSIForTest(stdout.String())
+	for _, want := range []string{"Submission history · Sorting", "No submissions yet", "Run colab submit"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("stdout = %q, want %q", plain, want)
+		}
 	}
 }
 
@@ -1937,9 +2084,10 @@ func TestHistoryCommandWithSubmissionIDShowsDetail(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 
-	for _, want := range []string{"Submission details", submissionID, "Throughput", "88", "great"} {
-		if !strings.Contains(stdout.String(), want) {
-			t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+	plain := stripANSIForTest(stdout.String())
+	for _, want := range []string{"Loading submission…", "Submission details", submissionID, "Throughput", "88", "great"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("stdout = %q, want %q", plain, want)
 		}
 	}
 }
@@ -1956,6 +2104,18 @@ func TestNickCommandUpdatesNickname(t *testing.T) {
 	var captured updateCapture
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
+			writeLabManifest(t, w, manifest.Manifest{
+				Lab:    manifest.LabSection{ID: "sorting", Name: "Sorting"},
+				Submit: manifest.SubmitSection{Files: []string{"main.c"}},
+				Eval:   manifest.EvalSection{Image: "ghcr.io/labkit/sorting:1"},
+				Quota:  manifest.QuotaSection{Daily: 3},
+				Metrics: []manifest.MetricSection{
+					{ID: "throughput", Name: "Throughput", Sort: manifest.MetricSortDesc},
+				},
+				Board:    manifest.BoardSection{RankBy: "throughput"},
+				Schedule: manifest.ScheduleSection{Open: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Close: time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)},
+			})
 		case r.Method == http.MethodPut && r.URL.Path == "/api/labs/sorting/nickname":
 			captured = captureJSONUpdateRequest(t, r, "/api/labs/sorting/nickname", priv.Public().(ed25519.PublicKey))
 			_ = json.NewEncoder(w).Encode(map[string]any{
@@ -1994,8 +2154,11 @@ func TestNickCommandUpdatesNickname(t *testing.T) {
 	if captured.body["nickname"] != "Cat" {
 		t.Fatalf("nickname body = %#v, want Cat", captured.body["nickname"])
 	}
-	if !strings.Contains(stdout.String(), "Cat") {
-		t.Fatalf("stdout = %q, want nickname confirmation", stdout.String())
+	plain := stripANSIForTest(stdout.String())
+	for _, want := range []string{"Updating nickname…", "Nickname updated", "Sorting", "Cat"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("stdout = %q, want %q", plain, want)
+		}
 	}
 }
 
@@ -2062,8 +2225,11 @@ func TestTrackCommandUpdatesTrack(t *testing.T) {
 	if captured.body["track"] != "latency" {
 		t.Fatalf("track body = %#v, want latency", captured.body["track"])
 	}
-	if !strings.Contains(stdout.String(), "latency") {
-		t.Fatalf("stdout = %q, want track confirmation", stdout.String())
+	plain := stripANSIForTest(stdout.String())
+	for _, want := range []string{"Updating track…", "Track set", "Sorting", "latency"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("stdout = %q, want %q", plain, want)
+		}
 	}
 }
 

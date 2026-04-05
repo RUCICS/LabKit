@@ -31,7 +31,7 @@ func TestRouterWiresDeviceAuthRoutes(t *testing.T) {
 	svc := authsvc.NewService(repo, noopOAuthClient{}, config.OAuthConfig{})
 	router := NewRouter(WithAuthService(svc))
 
-	authorizeReq := httptest.NewRequest(http.MethodPost, "/api/device/authorize", bytes.NewBufferString(`{"public_key":"`+testAuthorizedKey+`"}`))
+	authorizeReq := httptest.NewRequest(http.MethodPost, "/api/device/authorize", bytes.NewBufferString(`{"public_key":"`+testAuthorizedKey+`","device_name":"student-mbp"}`))
 	authorizeRR := httptest.NewRecorder()
 	router.ServeHTTP(authorizeRR, authorizeReq)
 	if authorizeRR.Code != http.StatusCreated {
@@ -51,11 +51,15 @@ func TestRouterWiresDeviceAuthRoutes(t *testing.T) {
 	if authorizePayload.VerificationURL != "/auth/device" {
 		t.Fatalf("verification_url = %q, want %q", authorizePayload.VerificationURL, "/auth/device")
 	}
+	if got := repo.requestsByDeviceCode[authorizePayload.DeviceCode].DeviceName; got != "student-mbp" {
+		t.Fatalf("stored device_name = %q, want %q", got, "student-mbp")
+	}
 
 	repo.requestsByDeviceCode[authorizePayload.DeviceCode] = sqlc.DeviceAuthRequests{
 		DeviceCode: authorizePayload.DeviceCode,
 		UserCode:   authorizePayload.UserCode,
 		PublicKey:  testAuthorizedKey,
+		DeviceName: "student-mbp",
 		StudentID:  pgtype.Text{String: "2026001", Valid: true},
 		Status:     "approved",
 	}
@@ -452,6 +456,7 @@ func (r *routerAuthRepo) CreateDeviceAuthRequest(_ context.Context, arg sqlc.Cre
 		DeviceCode: arg.DeviceCode,
 		UserCode:   arg.UserCode,
 		PublicKey:  arg.PublicKey,
+		DeviceName: arg.DeviceName,
 		StudentID:  arg.StudentID,
 		OauthState: arg.OauthState,
 		Status:     arg.Status,

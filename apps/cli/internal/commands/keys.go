@@ -65,8 +65,12 @@ func runListKeys(ctx context.Context, deps *Dependencies) error {
 	if err != nil {
 		return err
 	}
-	keys, err := client.listKeys(ctx, cfg, privateKey)
-	if err != nil {
+	var keys []keyListEntry
+	if err := withLineSpinner(deps, "Loading keys…", func() error {
+		var listErr error
+		keys, listErr = client.listKeys(ctx, cfg, privateKey)
+		return listErr
+	}); err != nil {
 		return err
 	}
 	theme := ui.DefaultTheme()
@@ -128,5 +132,7 @@ func runRevokeKey(ctx context.Context, deps *Dependencies, keyID int64) error {
 	if err != nil {
 		return err
 	}
-	return client.revokeKey(ctx, cfg, privateKey, keyID)
+	return withLineSpinner(deps, "Revoking key…", func() error {
+		return client.revokeKey(ctx, cfg, privateKey, keyID)
+	})
 }

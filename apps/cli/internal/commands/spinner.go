@@ -13,18 +13,18 @@ import (
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 type lineSpinner struct {
-	out       io.Writer
-	tty       bool
-	label     string
-	theme     ui.Theme
-	frames    []string
-	interval  time.Duration
-	ticker    *time.Ticker
-	done      chan struct{}
-	stopped   chan struct{}
-	mu        sync.Mutex
+	out        io.Writer
+	tty        bool
+	label      string
+	theme      ui.Theme
+	frames     []string
+	interval   time.Duration
+	ticker     *time.Ticker
+	done       chan struct{}
+	stopped    chan struct{}
+	mu         sync.Mutex
 	frameIndex int
-	started   bool
+	started    bool
 }
 
 func newLineSpinner(out io.Writer, tty bool, label string) *lineSpinner {
@@ -119,4 +119,18 @@ func (s *lineSpinner) renderCurrentFrameLocked() error {
 	line := "  " + s.theme.InfoStyle.Render(frame) + " " + s.theme.ValueStyle.Render(s.label)
 	_, err := fmt.Fprint(s.out, liveClearLine+line)
 	return err
+}
+
+func withLineSpinner(deps *Dependencies, label string, run func() error) error {
+	deps = normalizeDependencies(deps)
+	spinner := newLineSpinner(deps.Out, deps.IsTTY(), label)
+	if err := spinner.Start(); err != nil {
+		return err
+	}
+	runErr := run()
+	stopErr := spinner.Stop()
+	if runErr != nil {
+		return runErr
+	}
+	return stopErr
 }
