@@ -19,7 +19,10 @@ services:
     restart: unless-stopped
 
   migrate:
-    image: postgres:18
+    build:
+      context: ..
+      dockerfile: deploy/migrate.Dockerfile
+    image: labkit-migrate:local
     depends_on:
       postgres:
         condition: service_healthy
@@ -29,10 +32,12 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-labkit}
       POSTGRES_USER: ${POSTGRES_USER:-labkit}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-labkit}
+      POSTGRES_SSLMODE: ${POSTGRES_SSLMODE:-disable}
+      LABKIT_MIGRATIONS_DIR: /migrations
     volumes:
       - ../db/migrations:/migrations:ro
       - ./migrate.sh:/migrate.sh:ro
-    command: ["/bin/sh", "/migrate.sh"]
+    entrypoint: ["/bin/sh", "/migrate.sh"]
     restart: "no"
 
   api:
