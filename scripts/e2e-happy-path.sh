@@ -285,7 +285,12 @@ docker run -d --rm \
   --user "$(id -u):$(id -g)" \
   -p "${API_PORT}:8080" \
   -v "$ARTIFACT_ROOT:$CONTAINER_ARTIFACT_ROOT" \
-  -e DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable" \
+  -e POSTGRES_HOST="postgres" \
+  -e POSTGRES_PORT="5432" \
+  -e POSTGRES_DB="$POSTGRES_DB" \
+  -e POSTGRES_USER="$POSTGRES_USER" \
+  -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+  -e POSTGRES_SSLMODE="disable" \
   -e LABKIT_ADMIN_TOKEN="$ADMIN_TOKEN" \
   -e LABKIT_ARTIFACT_ROOT="$CONTAINER_ARTIFACT_ROOT" \
   -e LABKIT_DEV_MODE=true \
@@ -367,7 +372,12 @@ docker run --rm \
   --group-add "$(stat -c '%g' /var/run/docker.sock)" \
   -v "$ARTIFACT_ROOT:$CONTAINER_ARTIFACT_ROOT" \
   -v /var/run/docker.sock:/var/run/docker.sock \
-  -e DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable" \
+  -e POSTGRES_HOST="postgres" \
+  -e POSTGRES_PORT="5432" \
+  -e POSTGRES_DB="$POSTGRES_DB" \
+  -e POSTGRES_USER="$POSTGRES_USER" \
+  -e POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
+  -e POSTGRES_SSLMODE="disable" \
   -e LABKIT_ARTIFACT_ROOT="$CONTAINER_ARTIFACT_ROOT" \
   -e LABKIT_WORKER_RUN_ONCE=true \
   -e LABKIT_WORKER_ID="e2e-worker" \

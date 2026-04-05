@@ -33,10 +33,6 @@ func main() {
 		addr = ":8080"
 	}
 
-	databaseURL := os.Getenv("DATABASE_URL")
-	if databaseURL == "" {
-		log.Fatal("DATABASE_URL is required")
-	}
 	adminToken := os.Getenv("LABKIT_ADMIN_TOKEN")
 	if adminToken == "" {
 		log.Fatal("LABKIT_ADMIN_TOKEN is required")
@@ -46,7 +42,12 @@ func main() {
 		artifactRoot = "artifacts"
 	}
 
-	pool, err := pgxpool.New(context.Background(), databaseURL)
+	poolConfig, err := db.ResolvePoolConfigFromEnv(os.Getenv)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	pool, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
 	if err != nil {
 		log.Fatal(err)
 	}

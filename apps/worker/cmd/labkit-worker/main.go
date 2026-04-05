@@ -13,6 +13,7 @@ import (
 
 	"labkit.local/apps/worker/internal/runtime"
 	"labkit.local/apps/worker/internal/service/evaluation"
+	db "labkit.local/packages/go/db"
 	"labkit.local/packages/go/db/sqlc"
 	"labkit.local/packages/go/jobs"
 
@@ -119,16 +120,17 @@ func defaultRunDevWorker(ctx context.Context, opts devWorkerOptions) error {
 		return fmt.Errorf("worker id is required")
 	}
 
-	databaseURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
-	if databaseURL == "" {
-		return fmt.Errorf("DATABASE_URL is required")
-	}
 	artifactRoot := strings.TrimSpace(os.Getenv("LABKIT_ARTIFACT_ROOT"))
 	if artifactRoot == "" {
 		artifactRoot = "artifacts"
 	}
 
-	pool, err := pgxpool.New(ctx, databaseURL)
+	poolConfig, err := db.ResolvePoolConfigFromEnv(os.Getenv)
+	if err != nil {
+		return err
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return err
 	}
@@ -168,16 +170,17 @@ func defaultRunRealWorker(ctx context.Context, opts realWorkerOptions) error {
 		return fmt.Errorf("worker id is required")
 	}
 
-	databaseURL := strings.TrimSpace(os.Getenv("DATABASE_URL"))
-	if databaseURL == "" {
-		return fmt.Errorf("DATABASE_URL is required")
-	}
 	artifactRoot := strings.TrimSpace(os.Getenv("LABKIT_ARTIFACT_ROOT"))
 	if artifactRoot == "" {
 		artifactRoot = "artifacts"
 	}
 
-	pool, err := pgxpool.New(ctx, databaseURL)
+	poolConfig, err := db.ResolvePoolConfigFromEnv(os.Getenv)
+	if err != nil {
+		return err
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return err
 	}
