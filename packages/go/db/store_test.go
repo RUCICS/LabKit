@@ -3,11 +3,15 @@ package db
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"labkit.local/packages/go/db/sqlc"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -21,6 +25,7 @@ func TestGeneratedQueriesExposeKeyHelpers(t *testing.T) {
 		"ListLabs",
 		"CreateUser",
 		"GetUserByStudentID",
+		"UpdateUserNickname",
 		"CreateDeviceAuthRequest",
 		"GetPendingDeviceAuthRequestByUserCode",
 		"CreateWebSessionTicket",
@@ -32,6 +37,7 @@ func TestGeneratedQueriesExposeKeyHelpers(t *testing.T) {
 		"CreateSubmission",
 		"GetSubmission",
 		"ListSubmissionsByUserLab",
+		"ListRecentSubmissionsByUser",
 		"GetLatestSubmissionByUserLab",
 		"CountSubmissionQuotaUsage",
 		"UpdateSubmissionQuotaState",
@@ -168,6 +174,183 @@ func TestCreateUserKeyAllowsReusingPublicKeyAfterRevoke(t *testing.T) {
 	if got, want := row.DeviceName, "device-1b"; got != want {
 		t.Fatalf("DeviceName = %q, want %q", got, want)
 	}
+}
+
+func TestUpdateUserNicknamePersistsValueAndRecentSubmissionsOrder(t *testing.T) {
+	ctx := context.Background()
+	pool := openTestPool(t, ctx)
+	resetTestDatabase(t, ctx, pool)
+
+	store := New(pool)
+	user, err := store.UpdateUserNickname(ctx, sqlc.UpdateUserNicknameParams{
+		ID:       1,
+		Nickname: "alice",
+	})
+	if err != nil {
+		t.Fatalf("UpdateUserNickname() error = %v", err)
+	}
+	if got, want := user.Nickname, "alice"; got != want {
+		t.Fatalf("Nickname = %q, want %q", got, want)
+	}
+
+	profile, err := store.GetUserByID(ctx, 1)
+	if err != nil {
+		t.Fatalf("GetUserByID() error = %v", err)
+	}
+	if got, want := profile.Nickname, "alice"; got != want {
+		t.Fatalf("Nickname = %q, want %q", got, want)
+	}
+
+	firstID := uuidMustParse(t, "11111111-1111-7111-8111-111111111111")
+	secondID := uuidMustParse(t, "22222222-2222-7222-8222-222222222222")
+
+	for _, submission := range []struct {
+		ID        uuid.UUID
+		Hash      string
+		Status    string
+		CreatedAt time.Time
+	}{
+		{
+			ID:        firstID,
+			Hash:      "hash-1",
+			Status:    "done",
+			CreatedAt: mustParseTime(t, "2026-04-09T08:00:00Z"),
+		},
+		{
+			ID:        secondID,
+			Hash:      "hash-2",
+			Status:    "queued",
+			CreatedAt: mustParseTime(t, "2026-04-09T09:00:00Z"),
+		},
+	} {
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO submissions (
+				id, user_id, lab_id, key_id, artifact_key, content_hash, status, created_at, quota_state
+			)
+			VALUES ($1, 1, 'lab-1', 1, $2, $3, $4, $5, 'free')
+		`, submission.ID, "lab-1/1/"+submission.Hash+".tar.gz", submission.Hash, submission.Status, submission.CreatedAt); err != nil {
+			t.Fatalf("insert submission error = %v", err)
+		}
+	}
+
+	rows, err := store.ListRecentSubmissionsByUser(ctx, sqlc.ListRecentSubmissionsByUserParams{
+		UserID: 1,
+		Limit:  2,
+	})
+	if err != nil {
+		t.Fatalf("ListRecentSubmissionsByUser() error = %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("len(rows) = %d, want 2", len(rows))
+	}
+	if rows[0].ID != secondID || rows[1].ID != firstID {
+		t.Fatalf("rows = %#v, want newest submission first", rows)
+	}
+}
+
+func TestUserProfileNicknameMigrationBackfillsFromLabProfiles(t *testing.T) {
+	ctx := context.Background()
+	conn, err := pgx.Connect(ctx, testDatabaseURL)
+	if err != nil {
+		t.Fatalf("pgx.Connect() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = conn.Close(ctx)
+	})
+
+	if _, err := conn.Exec(ctx, `
+		CREATE TEMP TABLE users (
+			id BIGINT PRIMARY KEY,
+			student_id TEXT NOT NULL UNIQUE,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		);
+		CREATE TEMP TABLE lab_profiles (
+			user_id BIGINT NOT NULL,
+			lab_id TEXT NOT NULL,
+			nickname TEXT NOT NULL DEFAULT '匿名',
+			track TEXT,
+			PRIMARY KEY (user_id, lab_id)
+		);
+	`); err != nil {
+		t.Fatalf("create temp legacy tables error = %v", err)
+	}
+
+	if _, err := conn.Exec(ctx, `
+		INSERT INTO users (id, student_id) VALUES
+			(1, 's0000001'),
+			(2, 's0000002'),
+			(3, 's0000003'),
+			(4, 's0000004');
+		INSERT INTO lab_profiles (user_id, lab_id, nickname) VALUES
+			(1, 'lab-a', 'Alpha'),
+			(1, 'lab-z', 'Alpha'),
+			(2, 'lab-b', ''),
+			(2, 'lab-a', '   '),
+			(4, 'lab-a', 'Alpha'),
+			(4, 'lab-z', 'Zulu');
+	`); err != nil {
+		t.Fatalf("seed legacy rows error = %v", err)
+	}
+
+	body, err := os.ReadFile(filepath.Join(repoRoot(), "db", "migrations", "0008_user_profile_nickname.up.sql"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if _, err := conn.Exec(ctx, string(body)); err != nil {
+		t.Fatalf("apply nickname migration error = %v", err)
+	}
+
+	rows, err := conn.Query(ctx, `SELECT id, nickname FROM users ORDER BY id`)
+	if err != nil {
+		t.Fatalf("query migrated users error = %v", err)
+	}
+	defer rows.Close()
+
+	type userRow struct {
+		id       int64
+		nickname string
+	}
+	var got []userRow
+	for rows.Next() {
+		var row userRow
+		if err := rows.Scan(&row.id, &row.nickname); err != nil {
+			t.Fatalf("Scan() error = %v", err)
+		}
+		got = append(got, row)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows.Err() = %v", err)
+	}
+
+	want := []userRow{
+		{id: 1, nickname: "Alpha"},
+		{id: 2, nickname: "匿名"},
+		{id: 3, nickname: "匿名"},
+		{id: 4, nickname: "匿名"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("migrated users = %#v, want %#v", got, want)
+	}
+}
+
+func uuidMustParse(t *testing.T, value string) uuid.UUID {
+	t.Helper()
+
+	id, err := uuid.Parse(value)
+	if err != nil {
+		t.Fatalf("uuid.Parse(%q) error = %v", value, err)
+	}
+	return id
+}
+
+func mustParseTime(t *testing.T, value string) time.Time {
+	t.Helper()
+
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		t.Fatalf("time.Parse(%q) error = %v", value, err)
+	}
+	return parsed
 }
 
 type fakeTx struct {

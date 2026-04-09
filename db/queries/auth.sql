@@ -15,6 +15,12 @@ FROM users
 WHERE student_id = $1
 LIMIT 1;
 
+-- name: UpdateUserNickname :one
+UPDATE users
+SET nickname = $2
+WHERE id = $1
+RETURNING *;
+
 -- name: GetUserKeyByID :one
 SELECT *
 FROM user_keys

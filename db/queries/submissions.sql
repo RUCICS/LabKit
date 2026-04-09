@@ -21,6 +21,13 @@ FROM submissions
 WHERE user_id = $1 AND lab_id = $2
 ORDER BY created_at DESC;
 
+-- name: ListRecentSubmissionsByUser :many
+SELECT *
+FROM submissions
+WHERE user_id = $1
+ORDER BY created_at DESC, id DESC
+LIMIT $2;
+
 -- name: GetLatestSubmissionByUserLab :one
 SELECT *
 FROM submissions

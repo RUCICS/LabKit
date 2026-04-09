@@ -72,7 +72,7 @@ func (q *Queries) CompleteDeviceAuthRequest(ctx context.Context, arg CompleteDev
 const createDeviceAuthRequest = `-- name: CreateDeviceAuthRequest :one
 INSERT INTO device_auth_requests (device_code, user_code, public_key, device_name, student_id, oauth_state, status, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, device_code, user_code, public_key, device_name, student_id, oauth_state, status, expires_at, created_at
+RETURNING id, device_code, user_code, public_key, student_id, oauth_state, status, expires_at, created_at, device_name
 `
 
 type CreateDeviceAuthRequestParams struct {
@@ -103,12 +103,12 @@ func (q *Queries) CreateDeviceAuthRequest(ctx context.Context, arg CreateDeviceA
 		&i.DeviceCode,
 		&i.UserCode,
 		&i.PublicKey,
-		&i.DeviceName,
 		&i.StudentID,
 		&i.OauthState,
 		&i.Status,
 		&i.ExpiresAt,
 		&i.CreatedAt,
+		&i.DeviceName,
 	)
 	return i, err
 }
@@ -116,13 +116,18 @@ func (q *Queries) CreateDeviceAuthRequest(ctx context.Context, arg CreateDeviceA
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (student_id)
 VALUES ($1)
-RETURNING id, student_id, created_at
+RETURNING id, student_id, created_at, nickname
 `
 
 func (q *Queries) CreateUser(ctx context.Context, studentID string) (Users, error) {
 	row := q.db.QueryRow(ctx, createUser, studentID)
 	var i Users
-	err := row.Scan(&i.ID, &i.StudentID, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.StudentID,
+		&i.CreatedAt,
+		&i.Nickname,
+	)
 	return i, err
 }
 
@@ -190,7 +195,7 @@ func (q *Queries) ExpireDeviceAuthRequests(ctx context.Context) error {
 }
 
 const getDeviceAuthRequestByDeviceCode = `-- name: GetDeviceAuthRequestByDeviceCode :one
-SELECT id, device_code, user_code, public_key, device_name, student_id, oauth_state, status, expires_at, created_at
+SELECT id, device_code, user_code, public_key, student_id, oauth_state, status, expires_at, created_at, device_name
 FROM device_auth_requests
 WHERE device_code = $1
 LIMIT 1
@@ -204,18 +209,18 @@ func (q *Queries) GetDeviceAuthRequestByDeviceCode(ctx context.Context, deviceCo
 		&i.DeviceCode,
 		&i.UserCode,
 		&i.PublicKey,
-		&i.DeviceName,
 		&i.StudentID,
 		&i.OauthState,
 		&i.Status,
 		&i.ExpiresAt,
 		&i.CreatedAt,
+		&i.DeviceName,
 	)
 	return i, err
 }
 
 const getPendingDeviceAuthRequestByOAuthState = `-- name: GetPendingDeviceAuthRequestByOAuthState :one
-SELECT id, device_code, user_code, public_key, device_name, student_id, oauth_state, status, expires_at, created_at
+SELECT id, device_code, user_code, public_key, student_id, oauth_state, status, expires_at, created_at, device_name
 FROM device_auth_requests
 WHERE oauth_state = $1 AND status = 'pending'
 LIMIT 1
@@ -229,18 +234,18 @@ func (q *Queries) GetPendingDeviceAuthRequestByOAuthState(ctx context.Context, o
 		&i.DeviceCode,
 		&i.UserCode,
 		&i.PublicKey,
-		&i.DeviceName,
 		&i.StudentID,
 		&i.OauthState,
 		&i.Status,
 		&i.ExpiresAt,
 		&i.CreatedAt,
+		&i.DeviceName,
 	)
 	return i, err
 }
 
 const getPendingDeviceAuthRequestByUserCode = `-- name: GetPendingDeviceAuthRequestByUserCode :one
-SELECT id, device_code, user_code, public_key, device_name, student_id, oauth_state, status, expires_at, created_at
+SELECT id, device_code, user_code, public_key, student_id, oauth_state, status, expires_at, created_at, device_name
 FROM device_auth_requests
 WHERE user_code = $1 AND status = 'pending'
 LIMIT 1
@@ -254,18 +259,18 @@ func (q *Queries) GetPendingDeviceAuthRequestByUserCode(ctx context.Context, use
 		&i.DeviceCode,
 		&i.UserCode,
 		&i.PublicKey,
-		&i.DeviceName,
 		&i.StudentID,
 		&i.OauthState,
 		&i.Status,
 		&i.ExpiresAt,
 		&i.CreatedAt,
+		&i.DeviceName,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, student_id, created_at
+SELECT id, student_id, created_at, nickname
 FROM users
 WHERE id = $1
 LIMIT 1
@@ -274,12 +279,17 @@ LIMIT 1
 func (q *Queries) GetUserByID(ctx context.Context, id int64) (Users, error) {
 	row := q.db.QueryRow(ctx, getUserByID, id)
 	var i Users
-	err := row.Scan(&i.ID, &i.StudentID, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.StudentID,
+		&i.CreatedAt,
+		&i.Nickname,
+	)
 	return i, err
 }
 
 const getUserByStudentID = `-- name: GetUserByStudentID :one
-SELECT id, student_id, created_at
+SELECT id, student_id, created_at, nickname
 FROM users
 WHERE student_id = $1
 LIMIT 1
@@ -288,7 +298,12 @@ LIMIT 1
 func (q *Queries) GetUserByStudentID(ctx context.Context, studentID string) (Users, error) {
 	row := q.db.QueryRow(ctx, getUserByStudentID, studentID)
 	var i Users
-	err := row.Scan(&i.ID, &i.StudentID, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.StudentID,
+		&i.CreatedAt,
+		&i.Nickname,
+	)
 	return i, err
 }
 
@@ -424,4 +439,28 @@ type UpdateUserKeyFingerprintParams struct {
 func (q *Queries) UpdateUserKeyFingerprint(ctx context.Context, arg UpdateUserKeyFingerprintParams) error {
 	_, err := q.db.Exec(ctx, updateUserKeyFingerprint, arg.ID, arg.Fingerprint)
 	return err
+}
+
+const updateUserNickname = `-- name: UpdateUserNickname :one
+UPDATE users
+SET nickname = $2
+WHERE id = $1
+RETURNING id, student_id, created_at, nickname
+`
+
+type UpdateUserNicknameParams struct {
+	ID       int64  `json:"id"`
+	Nickname string `json:"nickname"`
+}
+
+func (q *Queries) UpdateUserNickname(ctx context.Context, arg UpdateUserNicknameParams) (Users, error) {
+	row := q.db.QueryRow(ctx, updateUserNickname, arg.ID, arg.Nickname)
+	var i Users
+	err := row.Scan(
+		&i.ID,
+		&i.StudentID,
+		&i.CreatedAt,
+		&i.Nickname,
+	)
+	return i, err
 }

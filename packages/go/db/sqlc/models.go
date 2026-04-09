@@ -16,12 +16,12 @@ type DeviceAuthRequests struct {
 	DeviceCode string             `json:"device_code"`
 	UserCode   string             `json:"user_code"`
 	PublicKey  string             `json:"public_key"`
-	DeviceName string             `json:"device_name"`
 	StudentID  pgtype.Text        `json:"student_id"`
 	OauthState pgtype.Text        `json:"oauth_state"`
 	Status     string             `json:"status"`
 	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	DeviceName string             `json:"device_name"`
 }
 
 type EvaluationJobs struct {
@@ -103,6 +103,7 @@ type Users struct {
 	ID        int64              `json:"id"`
 	StudentID string             `json:"student_id"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	Nickname  string             `json:"nickname"`
 }
 
 type WebSessionTickets struct {

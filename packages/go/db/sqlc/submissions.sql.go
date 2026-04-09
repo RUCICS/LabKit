@@ -227,6 +227,55 @@ func (q *Queries) GetSubmission(ctx context.Context, id uuid.UUID) (Submissions,
 	return i, err
 }
 
+const listRecentSubmissionsByUser = `-- name: ListRecentSubmissionsByUser :many
+SELECT id, user_id, lab_id, key_id, artifact_key, content_hash, status, verdict, message, detail, image_digest, started_at, finished_at, created_at, quota_state
+FROM submissions
+WHERE user_id = $1
+ORDER BY created_at DESC, id DESC
+LIMIT $2
+`
+
+type ListRecentSubmissionsByUserParams struct {
+	UserID int64 `json:"user_id"`
+	Limit  int32 `json:"limit"`
+}
+
+func (q *Queries) ListRecentSubmissionsByUser(ctx context.Context, arg ListRecentSubmissionsByUserParams) ([]Submissions, error) {
+	rows, err := q.db.Query(ctx, listRecentSubmissionsByUser, arg.UserID, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Submissions{}
+	for rows.Next() {
+		var i Submissions
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.LabID,
+			&i.KeyID,
+			&i.ArtifactKey,
+			&i.ContentHash,
+			&i.Status,
+			&i.Verdict,
+			&i.Message,
+			&i.Detail,
+			&i.ImageDigest,
+			&i.StartedAt,
+			&i.FinishedAt,
+			&i.CreatedAt,
+			&i.QuotaState,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listScoresBySubmission = `-- name: ListScoresBySubmission :many
 SELECT submission_id, metric_id, value
 FROM scores
