@@ -93,6 +93,29 @@ func TestLeaderboardHandlerReturnsInvalidManifest(t *testing.T) {
 	assertStructuredErrorResponse(t, rr, http.StatusBadRequest, "", "invalid_manifest", "Invalid manifest")
 }
 
+func TestLeaderboardHandlerUsesBrowserSessionViewer(t *testing.T) {
+	svc := &capturingLeaderboardHTTPService{}
+	handler := &LeaderboardHandler{Service: svc}
+	sessionToken, err := issueBrowserSession(7, 12, "")
+	if err != nil {
+		t.Fatalf("issueBrowserSession() error = %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/labs/sorting/board", nil)
+	req.SetPathValue("labID", "sorting")
+	req.AddCookie(&http.Cookie{Name: browserSessionCookieName, Value: sessionToken})
+
+	handler.GetBoard(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	if svc.viewerUserID != 7 {
+		t.Fatalf("viewerUserID = %d, want 7", svc.viewerUserID)
+	}
+}
+
 type leaderboardHTTPTestService struct{}
 
 func newLeaderboardHTTPTestService() *leaderboardHTTPTestService {
@@ -103,8 +126,17 @@ type leaderboardHTTPErrorService struct {
 	err error
 }
 
+type capturingLeaderboardHTTPService struct {
+	viewerUserID int64
+}
+
 func (s leaderboardHTTPErrorService) GetBoard(_ context.Context, _, _ string, _ int64) (boardsvc.Board, error) {
 	return boardsvc.Board{}, s.err
+}
+
+func (s *capturingLeaderboardHTTPService) GetBoard(_ context.Context, _, _ string, viewerUserID int64) (boardsvc.Board, error) {
+	s.viewerUserID = viewerUserID
+	return boardsvc.Board{}, nil
 }
 
 func (s *leaderboardHTTPTestService) GetBoard(_ context.Context, labID, by string, _ int64) (boardsvc.Board, error) {

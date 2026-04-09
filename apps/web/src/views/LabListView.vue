@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
+import StatusBadge from '../components/chrome/StatusBadge.vue';
 import type { PublicLab } from '../components/board/types';
+import { getLabPhase, labPhaseLabel } from '../lib/labs';
 
 const labs = ref<PublicLab[]>([]);
 const loading = ref(true);
@@ -32,17 +34,8 @@ function boardHref(labId: string) {
   return `/labs/${labId}/board`;
 }
 
-function labStatus(lab: PublicLab) {
-  const now = Date.now();
-  const open = Date.parse(lab.manifest?.schedule?.open ?? '');
-  const close = Date.parse(lab.manifest?.schedule?.close ?? '');
-  if (!Number.isNaN(open) && now < open) {
-    return 'UPCOMING';
-  }
-  if (!Number.isNaN(close) && now > close) {
-    return 'CLOSED';
-  }
-  return 'OPEN';
+function labPhase(lab: PublicLab) {
+  return getLabPhase(lab.manifest?.schedule);
 }
 
 function metricDot(metricId: string) {
@@ -92,10 +85,7 @@ function formatCloseDate(lab: PublicLab) {
               <h3>{{ lab.name }}</h3>
               <p>{{ lab.id }}</p>
             </div>
-            <span class="lab-card__status" :data-status="labStatus(lab)">
-              <span class="lab-card__status-dot" />
-              {{ labStatus(lab) }}
-            </span>
+            <StatusBadge :label="labPhaseLabel(labPhase(lab))" :tone="labPhase(lab)" />
           </div>
           <div class="lab-card__body">
             <p>
@@ -210,41 +200,6 @@ function formatCloseDate(lab: PublicLab) {
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 0.78rem;
-}
-
-.lab-card__status {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 10px;
-  border-radius: 4px;
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.lab-card__status[data-status='OPEN'] {
-  color: var(--color-open);
-  background: rgba(52, 211, 153, 0.08);
-}
-
-.lab-card__status[data-status='UPCOMING'] {
-  color: var(--text-secondary);
-  background: var(--bg-elevated);
-}
-
-.lab-card__status[data-status='CLOSED'] {
-  color: var(--text-tertiary);
-  background: var(--bg-elevated);
-}
-
-.lab-card__status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
 }
 
 .lab-card__body {

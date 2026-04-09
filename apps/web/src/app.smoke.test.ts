@@ -18,5 +18,6 @@ describe('app smoke', () => {
     expect(shell).not.toBeNull();
     expect(nav).not.toBeNull();
     expect(appShell?.textContent).toContain('LabKit');
+    expect(appShell?.textContent).toContain('Devices');
   });
 });

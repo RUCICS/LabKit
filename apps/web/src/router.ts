@@ -3,6 +3,7 @@ import AdminLabsView from './views/AdminLabsView.vue';
 import AdminQueueView from './views/AdminQueueView.vue';
 import AuthConfirmView from './views/AuthConfirmView.vue';
 import DeviceAuthView from './views/DeviceAuthView.vue';
+import HistoryView from './views/HistoryView.vue';
 import LabListView from './views/LabListView.vue';
 import ProfileView from './views/ProfileView.vue';
 import LeaderboardView from './views/LeaderboardView.vue';
@@ -25,6 +26,14 @@ export function createAppRouter(history = createWebHistory()) {
         })
       },
       {
+        path: '/labs/:labID/history',
+        name: 'history',
+        component: HistoryView,
+        props: (route) => ({
+          labId: String(route.params.labID)
+        })
+      },
+      {
         path: '/auth/device',
         name: 'auth-device',
         component: DeviceAuthView
@@ -35,9 +44,13 @@ export function createAppRouter(history = createWebHistory()) {
         component: AuthConfirmView
       },
       {
-        path: '/profile',
-        name: 'profile',
+        path: '/devices',
+        name: 'devices',
         component: ProfileView
+      },
+      {
+        path: '/profile',
+        redirect: '/devices'
       },
       {
         path: '/admin',

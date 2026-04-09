@@ -8,6 +8,7 @@ const props = defineProps<{
   selectedMetricId: string;
   closeAt?: string;
   apiHint: string;
+  metricUnits?: Record<string, string>;
 }>();
 
 const lastUpdated = computed(() => {
@@ -42,6 +43,10 @@ function formatScore(value: number | undefined) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(value);
+}
+
+function metricUnit(metricId: string) {
+  return props.metricUnits?.[metricId] ?? '';
 }
 
 function formatUpdatedAt(value: string) {
@@ -108,6 +113,7 @@ function trackClass(track: string | undefined) {
           v-for="row in rows"
           :key="`${row.rank}-${row.nickname}`"
           data-testid="leaderboard-row"
+          :class="{ 'board-table__row--current': row.current_user }"
           :style="{ '--row-delay': `${Math.max(row.rank - 1, 0) * 30}ms` }"
         >
           <td class="board-table__rank">{{ row.rank }}</td>
@@ -125,7 +131,8 @@ function trackClass(track: string | undefined) {
             class="board-table__metric"
             :class="{ 'board-table__metric-cell--selected': metric.id === selectedMetricId }"
           >
-            {{ formatScore(scoreForRow(row, metric.id)) }}
+            <span>{{ formatScore(scoreForRow(row, metric.id)) }}</span>
+            <span v-if="metricUnit(metric.id)" class="board-table__unit">{{ metricUnit(metric.id) }}</span>
           </td>
           <td class="board-table__updated">{{ formatUpdatedAt(row.updated_at) }}</td>
         </tr>
@@ -195,6 +202,14 @@ tbody tr:hover td {
   background: var(--bg-hover);
 }
 
+.board-table__row--current td {
+  background: var(--accent-dim);
+}
+
+.board-table__row--current td:first-child {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
 .board-table__rank,
 .board-table__metric,
 .board-table__updated {
@@ -251,6 +266,12 @@ tbody tr:hover td {
 .board-table__metric,
 .board-table__updated {
   text-align: right;
+}
+
+.board-table__unit {
+  margin-left: 1px;
+  color: var(--text-tertiary);
+  font-size: 0.7rem;
 }
 
 .board-table__updated {

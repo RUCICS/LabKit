@@ -68,6 +68,39 @@ func TestHistoryHandlerListsSubmissionHistory(t *testing.T) {
 	}
 }
 
+func TestHistoryHandlerListsSubmissionHistoryFromBrowserSession(t *testing.T) {
+	repo := newPersonalTestRepo(t, true)
+	svc := personal.NewService(repo)
+	svc.SetNow(func() time.Time { return time.Date(2026, 3, 31, 13, 30, 0, 0, time.UTC) })
+	handler := &HistoryHandler{Service: svc}
+
+	sessionToken, err := issueBrowserSession(7, 12, "")
+	if err != nil {
+		t.Fatalf("issueBrowserSession() error = %v", err)
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/labs/sorting/history", nil)
+	req.SetPathValue("labID", "sorting")
+	req.AddCookie(&http.Cookie{Name: browserSessionCookieName, Value: sessionToken})
+
+	handler.ListHistory(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+
+	var payload struct {
+		Submissions []personal.HistoryItem `json:"submissions"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if len(payload.Submissions) != 2 {
+		t.Fatalf("len(submissions) = %d, want 2", len(payload.Submissions))
+	}
+}
+
 func TestHistoryHandlerFetchesSubmissionDetailWithScores(t *testing.T) {
 	repo := newPersonalTestRepo(t, true)
 	svc := personal.NewService(repo)
@@ -346,19 +379,26 @@ func TestKeysHandlerDoesNotRevokeOtherUsersKey(t *testing.T) {
 	}
 }
 
-func TestBrowserSessionDoesNotAuthorizeMutatingPersonalRequests(t *testing.T) {
+func TestBrowserSessionAuthorizesMutatingPersonalRequests(t *testing.T) {
 	repo := newPersonalTestRepo(t, true)
 	svc := personal.NewService(repo)
 	handler := &ProfileHandler{Service: svc}
 
+	sessionToken, err := issueBrowserSession(7, 12, "")
+	if err != nil {
+		t.Fatalf("issueBrowserSession() error = %v", err)
+	}
+
 	req := httptest.NewRequest(http.MethodPut, "/api/labs/sorting/nickname", bytes.NewBufferString(`{"nickname":"Cat"}`))
 	req.SetPathValue("labID", "sorting")
-	req.AddCookie(&http.Cookie{Name: browserSessionCookieName, Value: "session-token"})
+	req.AddCookie(&http.Cookie{Name: browserSessionCookieName, Value: sessionToken})
 	rr := httptest.NewRecorder()
 
 	handler.UpdateNickname(rr, req)
 
-	assertStructuredErrorResponse(t, rr, http.StatusUnauthorized, "", "unauthorized", "Unauthorized")
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
+	}
 }
 
 func wantStringField(t *testing.T, payload map[string]any, key, want string) {

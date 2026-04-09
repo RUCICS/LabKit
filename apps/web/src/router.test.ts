@@ -23,4 +23,24 @@ describe('router', () => {
     expect(router.currentRoute.value.path).toBe('/auth/device');
     expect(router.currentRoute.value.query.user_code).toBe('ABCD-EFGH');
   });
+
+  it('routes lab history URLs to the history screen', async () => {
+    const router = createAppRouter(createMemoryHistory());
+
+    await router.push('/labs/sorting/history');
+    await router.isReady();
+
+    expect(router.currentRoute.value.name).toBe('history');
+    expect(router.currentRoute.value.params.labID).toBe('sorting');
+  });
+
+  it('redirects the legacy /profile path to /devices', async () => {
+    const router = createAppRouter(createMemoryHistory());
+
+    await router.push('/profile');
+    await router.isReady();
+
+    expect(router.currentRoute.value.name).toBe('devices');
+    expect(router.currentRoute.value.path).toBe('/devices');
+  });
 });

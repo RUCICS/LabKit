@@ -55,6 +55,13 @@ func authenticatePersonalRequest(w http.ResponseWriter, r *http.Request, auth pe
 	return result, true
 }
 
+func authenticateBrowserSessionOrPersonalRequest(w http.ResponseWriter, r *http.Request, auth personalAuthenticator, body []byte) (personal.AuthenticatedUser, bool) {
+	if user, ok := authenticateBrowserSessionRequest(r); ok {
+		return user, true
+	}
+	return authenticatePersonalRequest(w, r, auth, body)
+}
+
 func authenticateBrowserSessionRequest(r *http.Request) (personal.AuthenticatedUser, bool) {
 	session, ok := browserSessionFromRequest(r)
 	if !ok {

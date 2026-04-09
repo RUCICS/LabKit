@@ -26,7 +26,9 @@ func (h *LeaderboardHandler) GetBoard(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var viewerUserID int64
-	if strings.TrimSpace(r.Header.Get("X-LabKit-Key-Fingerprint")) != "" && h.Personal != nil {
+	if user, ok := authenticateBrowserSessionRequest(r); ok {
+		viewerUserID = user.UserID
+	} else if strings.TrimSpace(r.Header.Get("X-LabKit-Key-Fingerprint")) != "" && h.Personal != nil {
 		user, ok := authenticatePersonalRequest(w, r, h.Personal, nil)
 		if !ok {
 			return

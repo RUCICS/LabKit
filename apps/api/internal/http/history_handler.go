@@ -31,7 +31,7 @@ func (h *HistoryHandler) ListHistory(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", http.StatusText(http.StatusInternalServerError))
 		return
 	}
-	user, ok := authenticatePersonalRequest(w, r, h.Service, nil)
+	user, ok := authenticateBrowserSessionOrPersonalRequest(w, r, h.Service, nil)
 	if !ok {
 		return
 	}
@@ -49,7 +49,7 @@ func (h *HistoryHandler) GetSubmissionDetail(w http.ResponseWriter, r *http.Requ
 		middleware.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", http.StatusText(http.StatusInternalServerError))
 		return
 	}
-	user, ok := authenticatePersonalRequest(w, r, h.Service, nil)
+	user, ok := authenticateBrowserSessionOrPersonalRequest(w, r, h.Service, nil)
 	if !ok {
 		return
 	}

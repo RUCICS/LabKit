@@ -1,5 +1,12 @@
 export type LeaderboardMetricSort = 'asc' | 'desc';
 
+export interface QuotaSummary {
+  daily: number;
+  used: number;
+  left: number;
+  reset_hint: string;
+}
+
 export interface LeaderboardMetric {
   id: string;
   name: string;
@@ -16,6 +23,7 @@ export interface LeaderboardRow {
   rank: number;
   nickname: string;
   track?: string;
+  current_user?: boolean;
   scores: LeaderboardScore[];
   updated_at: string;
 }
@@ -25,43 +33,47 @@ export interface LeaderboardBoard {
   selected_metric: string;
   metrics: LeaderboardMetric[];
   rows: LeaderboardRow[];
+  quota?: QuotaSummary;
+}
+
+export interface LabManifestMetric {
+  id: string;
+  name: string;
+  sort: LeaderboardMetricSort;
+  unit?: string;
+}
+
+export interface LabManifestSchedule {
+  visible?: string;
+  open?: string;
+  close?: string;
+}
+
+export interface LabManifestBoard {
+  pick?: boolean;
+}
+
+export interface LabManifest {
+  lab?: {
+    tags?: Record<string, string>;
+  };
+  board?: LabManifestBoard;
+  schedule?: LabManifestSchedule;
+  metrics?: LabManifestMetric[];
 }
 
 export interface LeaderboardLabDetail {
   id: string;
   name: string;
-  manifest?: {
-    schedule?: {
-      visible?: string;
-      open?: string;
-      close?: string;
-    };
-    metrics?: Array<{
-      id: string;
-      name: string;
-      sort: LeaderboardMetricSort;
-      unit?: string;
-    }>;
-  };
+  manifest?: LabManifest;
 }
 
 export interface PublicLab {
   id: string;
   name: string;
-  manifest?: {
+  manifest?: LabManifest & {
     submit?: {
       files?: string[];
-    };
-    metrics?: Array<{
-      id: string;
-      name: string;
-      sort: LeaderboardMetricSort;
-      unit?: string;
-    }>;
-    schedule?: {
-      visible?: string;
-      open?: string;
-      close?: string;
     };
   };
 }

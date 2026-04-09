@@ -5,11 +5,18 @@ import LeaderboardView from './LeaderboardView.vue';
 type BoardPayload = {
   lab_id: string;
   selected_metric: string;
+  quota?: {
+    daily: number;
+    used: number;
+    left: number;
+    reset_hint: string;
+  };
   metrics: Array<{ id: string; name: string; sort: 'asc' | 'desc'; selected?: boolean }>;
   rows: Array<{
     rank: number;
     nickname: string;
     track?: string;
+    current_user?: boolean;
     scores: Array<{ metric_id: string; value: number }>;
     updated_at: string;
   }>;
@@ -19,9 +26,18 @@ type LabPayload = {
   id: string;
   name: string;
   manifest?: {
+    board?: {
+      pick?: boolean;
+    };
     schedule?: {
       close?: string;
     };
+    metrics?: Array<{
+      id: string;
+      name: string;
+      sort: 'asc' | 'desc';
+      unit?: string;
+    }>;
   };
 };
 
@@ -29,6 +45,13 @@ const labPayload: LabPayload = {
   id: 'sorting',
   name: 'CoLab 调度器竞赛',
   manifest: {
+    board: {
+      pick: true
+    },
+    metrics: [
+      { id: 'runtime_ms', name: 'Runtime', sort: 'desc', unit: 'x' },
+      { id: 'latency_ms', name: 'Latency', sort: 'asc', unit: 'x' }
+    ],
     schedule: {
       close: '2026-06-01T00:00:00Z'
     }
@@ -233,6 +256,7 @@ async function mountBoard(labId = 'sorting') {
 
 beforeEach(() => {
   document.body.innerHTML = '';
+  window.history.pushState({}, '', '/');
 });
 
 afterEach(() => {
@@ -460,6 +484,84 @@ describe('LeaderboardView', () => {
     expect(document.querySelector('[role="tablist"]')).toBeNull();
     expect(document.body.textContent).toContain('Local Smoke');
     expect(document.body.textContent).toContain('Score');
+
+    view.unmount();
+  });
+
+  it('renders viewer quota and saves nickname and track updates', async () => {
+    const fetchSpy = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/labs/sorting/board')) {
+        return makeResponse({
+          ...boardByMetric.runtime_ms,
+          quota: {
+            daily: 3,
+            used: 1,
+            left: 2,
+            reset_hint: '00:00 Asia/Shanghai'
+          },
+          rows: [
+            {
+              ...boardByMetric.runtime_ms.rows[0],
+              nickname: 'Bob',
+              track: 'latency',
+              current_user: true
+            },
+            boardByMetric.runtime_ms.rows[1]
+          ]
+        });
+      }
+      if (url.endsWith('/api/labs/sorting') && (!init || !init.method)) {
+        return makeLabResponse(labPayload);
+      }
+      if (url.endsWith('/api/labs/sorting/nickname')) {
+        return makeResponse({ lab_id: 'sorting', nickname: 'Bobby', track: 'latency', pick: true });
+      }
+      if (url.endsWith('/api/labs/sorting/track')) {
+        return makeResponse({ lab_id: 'sorting', nickname: 'Bobby', track: 'runtime_ms', pick: true });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchSpy);
+
+    const view = await mountBoard();
+
+    expect(document.body.textContent).toContain('2 left today');
+    expect(document.body.textContent).toContain('My board profile');
+
+    const nicknameInput = document.querySelector('input[name="nickname"]') as HTMLInputElement | null;
+    expect(nicknameInput).not.toBeNull();
+    nicknameInput!.value = 'Bobby';
+    nicknameInput!.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const saveNickname = Array.from(document.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Save nickname')
+    ) as HTMLButtonElement | undefined;
+    expect(saveNickname).toBeDefined();
+    saveNickname!.click();
+    await waitForBodyText('My board profile');
+
+    const trackSelect = document.querySelector('select[name="track"]') as HTMLSelectElement | null;
+    expect(trackSelect).not.toBeNull();
+    trackSelect!.value = 'runtime_ms';
+    trackSelect!.dispatchEvent(new Event('change', { bubbles: true }));
+
+    const saveTrack = Array.from(document.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Save track')
+    ) as HTMLButtonElement | undefined;
+    expect(saveTrack).toBeDefined();
+    saveTrack!.click();
+    await waitForBodyText('Profile updated');
+
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/labs/sorting/nickname',
+      expect.objectContaining({ method: 'PUT', credentials: 'include' })
+    );
+    expect(fetchSpy).toHaveBeenCalledWith(
+      '/api/labs/sorting/track',
+      expect.objectContaining({ method: 'PUT', credentials: 'include' })
+    );
+    expect(document.body.textContent).toContain('Profile updated');
 
     view.unmount();
   });
