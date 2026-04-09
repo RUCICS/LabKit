@@ -15,4 +15,5 @@ artifacts/
 __pycache__/
 .superpowers/
 .claude/
+.worktrees/
 submission.json
