@@ -457,29 +457,6 @@ onMounted(() => {
   align-items: end;
 }
 
-.field {
-  display: grid;
-  gap: 8px;
-}
-
-.field span {
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.field input,
-.field select {
-  min-height: 38px;
-  padding: 0 12px;
-  border: 1px solid var(--border-default);
-  border-radius: 6px;
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-}
-
 @media (max-width: 767px) {
   .leaderboard-view__hero,
   .leaderboard-view__utility,

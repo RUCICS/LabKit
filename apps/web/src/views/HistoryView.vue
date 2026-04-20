@@ -269,6 +269,7 @@ onMounted(() => {
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 0.72rem;
+  font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -281,7 +282,6 @@ onMounted(() => {
   letter-spacing: -0.04em;
 }
 
-.history-view__subtitle,
 .history-view__status,
 .history-view__item-copy p,
 .history-view__message {
@@ -290,6 +290,7 @@ onMounted(() => {
 }
 
 .history-view__subtitle {
+  margin: 0;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 0.68rem;
@@ -312,6 +313,11 @@ onMounted(() => {
   border: 1px solid var(--border-default);
   border-radius: 10px;
   background: var(--bg-surface);
+  transition: border-color 150ms ease;
+}
+
+.history-view__item:hover {
+  border-color: var(--border-strong);
 }
 
 .history-view__item-head {

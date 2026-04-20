@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
+import type { PublicLab } from '../components/board/types';
+import StatusBadge from '../components/chrome/StatusBadge.vue';
 import {
   adminTokenStorageKey,
   authorizedAdminHeaders,
   readAPIError,
   writeAdminToken
 } from '../lib/admin';
+import { getLabPhase, labPhaseLabel } from '../lib/labs';
 
-type AdminLab = {
-  id: string;
-  name: string;
-};
+type AdminLab = PublicLab;
 
 const labs = ref<AdminLab[]>([]);
 const loading = ref(true);
@@ -72,6 +72,10 @@ function beginUpdate(labId: string) {
   targetLabID.value = labId;
   submitError.value = null;
   submitNotice.value = null;
+}
+
+function labPhase(lab: AdminLab) {
+  return getLabPhase(lab.manifest?.schedule);
 }
 
 async function submitManifest() {
@@ -148,8 +152,14 @@ onMounted(() => {
         <div v-else class="admin-labs-view__grid">
           <article v-for="lab in labs" :key="lab.id" class="admin-labs-view__card">
             <div class="admin-labs-view__card-copy">
-              <h3>{{ lab.name }}</h3>
+              <div class="admin-labs-view__card-head">
+                <h3>{{ lab.name }}</h3>
+                <StatusBadge :label="labPhaseLabel(labPhase(lab))" :tone="labPhase(lab)" />
+              </div>
               <p>{{ lab.id }}</p>
+              <p v-if="lab.manifest?.metrics?.length" class="admin-labs-view__card-meta">
+                {{ lab.manifest.metrics.length }} metrics
+              </p>
             </div>
             <div class="admin-labs-view__card-actions">
               <button type="button" class="button button--secondary" @click="beginUpdate(lab.id)">
@@ -316,6 +326,23 @@ onMounted(() => {
   border: 1px solid var(--border-default);
   border-radius: 10px;
   background: var(--bg-elevated);
+  transition: border-color 150ms ease;
+}
+
+.admin-labs-view__card:hover {
+  border-color: var(--border-strong);
+}
+
+.admin-labs-view__card-copy {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-labs-view__card-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .admin-labs-view__card-copy h3,
@@ -328,10 +355,15 @@ onMounted(() => {
 }
 
 .admin-labs-view__card-copy p {
-  margin-top: 4px;
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 0.72rem;
+}
+
+.admin-labs-view__card-meta {
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
 .admin-labs-view__card-actions {
@@ -344,42 +376,6 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-}
-
-.field {
-  display: grid;
-  gap: 8px;
-}
-
-.field span {
-  color: var(--text-tertiary);
-  font-size: 0.68rem;
-  font-family: var(--font-mono);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.field input,
-.field select,
-.field textarea {
-  width: 100%;
-  border: 1px solid var(--border-default);
-  border-radius: 6px;
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-  padding: 13px 14px;
-}
-
-.field textarea {
-  min-height: 320px;
-  resize: vertical;
-  font-family: var(--font-mono);
-  line-height: 1.55;
-}
-
-.field--stacked {
-  gap: 10px;
 }
 
 .admin-labs-view__feedback--error {

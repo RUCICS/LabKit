@@ -123,13 +123,14 @@ onBeforeUnmount(() => {
   transform: translate(-50%, -60%);
   width: 600px;
   height: 400px;
-  background: radial-gradient(ellipse, rgba(245, 158, 11, 0.25) 0%, transparent 70%);
+  background: radial-gradient(ellipse, color-mix(in srgb, var(--accent) 25%, transparent) 0%, transparent 70%);
   opacity: 0.18;
   pointer-events: none;
+  transition: background 400ms ease, opacity 400ms ease;
 }
 
 .auth-confirm-page.success::after {
-  background: radial-gradient(ellipse, rgba(52, 211, 153, 0.25) 0%, transparent 70%);
+  background: radial-gradient(ellipse, color-mix(in srgb, var(--color-open) 25%, transparent) 0%, transparent 70%);
   opacity: 0.28;
 }
 
@@ -153,12 +154,12 @@ onBeforeUnmount(() => {
 .logo-icon {
   width: 36px;
   height: 36px;
-  border-radius: 8px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f59e0b;
-  color: #06090f;
+  background: var(--accent);
+  color: var(--text-inverse);
 }
 
 .logo-text {
@@ -169,9 +170,9 @@ onBeforeUnmount(() => {
 }
 
 .auth-form {
-  background: #0b1120;
-  border: 1px solid rgba(148, 163, 194, 0.1);
-  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
   padding: 36px 32px;
   text-align: center;
 }
@@ -189,8 +190,8 @@ onBeforeUnmount(() => {
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background: rgba(52, 211, 153, 0.12);
-  border: 2px solid rgba(52, 211, 153, 0.3);
+  background: color-mix(in srgb, var(--color-open) 12%, transparent);
+  border: 2px solid color-mix(in srgb, var(--color-open) 30%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -201,19 +202,19 @@ onBeforeUnmount(() => {
   font-family: var(--font-mono);
   font-size: 1rem;
   font-weight: 600;
-  color: #34d399;
+  color: var(--color-open);
 }
 
 .success-detail {
   font-size: 0.85rem;
-  color: #8494a7;
+  color: var(--text-secondary);
   line-height: 1.5;
   text-align: center;
 }
 
 .success-detail strong,
 .success-meta {
-  color: #e2e8f0;
+  color: var(--text-primary);
   font-weight: 600;
 }
 
@@ -225,7 +226,7 @@ onBeforeUnmount(() => {
 .success-countdown {
   font-family: var(--font-mono);
   font-size: 0.72rem;
-  color: #4a5568;
+  color: var(--text-tertiary);
   margin-top: 4px;
 }
 
@@ -242,9 +243,9 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.12);
-  border: 2px solid rgba(248, 113, 113, 0.22);
+  color: var(--color-error);
+  background: color-mix(in srgb, var(--color-error) 12%, transparent);
+  border: 2px solid color-mix(in srgb, var(--color-error) 22%, transparent);
 }
 
 .error-title {
@@ -255,7 +256,7 @@ onBeforeUnmount(() => {
 
 .error-detail {
   margin: 0;
-  color: #8494a7;
+  color: var(--text-secondary);
   font-size: 0.85rem;
 }
 

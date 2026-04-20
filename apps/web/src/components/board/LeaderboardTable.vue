@@ -170,6 +170,7 @@ td {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border-subtle);
   text-align: left;
+  transition: background 150ms ease;
 }
 
 th {
@@ -263,7 +264,14 @@ tbody tr:hover td {
   background: var(--track-fairness);
 }
 
-.board-table__metric,
+.board-table__metric {
+  width: 140px;
+  text-align: right;
+  font-size: 0.9rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
 .board-table__updated {
   text-align: right;
 }
@@ -272,6 +280,7 @@ tbody tr:hover td {
   margin-left: 1px;
   color: var(--text-tertiary);
   font-size: 0.7rem;
+  font-weight: 400;
 }
 
 .board-table__updated {
@@ -321,6 +330,10 @@ tfoot td {
   .board-table__updated,
   th:last-child {
     display: none;
+  }
+
+  .board-table__metric {
+    width: 100px;
   }
 
   .board-table__footer {

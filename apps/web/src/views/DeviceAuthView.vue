@@ -184,7 +184,6 @@ function handleSubmit(event: Event) {
     </div>
 
     <div class="terminal-hint">
-      <span class="hint-prompt">$</span>
       <SquareTerminal :size="13" :stroke-width="2.2" aria-hidden="true" />
       <span class="hint-cmd">labkit auth</span>
     </div>
@@ -220,7 +219,7 @@ function handleSubmit(event: Event) {
   transform: translate(-50%, -60%);
   width: 600px;
   height: 400px;
-  background: radial-gradient(ellipse, rgba(245, 158, 11, 0.25) 0%, transparent 70%);
+  background: radial-gradient(ellipse, color-mix(in srgb, var(--accent) 25%, transparent) 0%, transparent 70%);
   opacity: 0.2;
   pointer-events: none;
 }
@@ -245,12 +244,12 @@ function handleSubmit(event: Event) {
 .logo-icon {
   width: 36px;
   height: 36px;
-  border-radius: 8px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f59e0b;
-  color: #06090f;
+  background: var(--accent);
+  color: var(--text-inverse);
 }
 
 .logo-text {
@@ -261,9 +260,9 @@ function handleSubmit(event: Event) {
 }
 
 .auth-form {
-  background: #0b1120;
-  border: 1px solid rgba(148, 163, 194, 0.1);
-  border-radius: 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
   padding: 36px 32px;
   text-align: center;
 }
@@ -278,7 +277,7 @@ function handleSubmit(event: Event) {
 
 .auth-desc {
   font-size: 0.85rem;
-  color: #8494a7;
+  color: var(--text-secondary);
   margin-bottom: 32px;
   line-height: 1.5;
 }
@@ -286,11 +285,11 @@ function handleSubmit(event: Event) {
 .auth-desc code {
   font-family: var(--font-mono);
   font-size: 0.8rem;
-  background: #111a2e;
+  background: var(--bg-elevated);
   padding: 2px 6px;
   border-radius: 3px;
-  color: #e2e8f0;
-  border: 1px solid rgba(148, 163, 194, 0.06);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
 }
 
 .code-group {
@@ -314,7 +313,7 @@ function handleSubmit(event: Event) {
   font-family: var(--font-mono);
   font-size: 1.5rem;
   font-weight: 300;
-  color: #4a5568;
+  color: var(--text-tertiary);
   margin: 0 4px;
   user-select: none;
 }
@@ -322,40 +321,40 @@ function handleSubmit(event: Event) {
 .code-input {
   width: 100%;
   height: 56px;
-  background: #06090f;
-  border: 1.5px solid rgba(148, 163, 194, 0.16);
-  border-radius: 8px;
+  background: var(--bg-root);
+  border: 1.5px solid var(--border-strong);
+  border-radius: 6px;
   font-family: var(--font-mono);
   font-size: 1.4rem;
   font-weight: 700;
-  color: #e2e8f0;
+  color: var(--text-primary);
   text-align: center;
   text-transform: uppercase;
   outline: none;
-  transition: all 0.15s ease;
-  caret-color: #f59e0b;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  caret-color: var(--accent);
 }
 
 .code-input::placeholder {
-  color: #4a5568;
+  color: var(--text-tertiary);
   opacity: 0.4;
   font-weight: 400;
 }
 
 .code-input.active {
-  border-color: #f59e0b;
-  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.12), 0 0 20px rgba(245, 158, 11, 0.12);
-  background: #111a2e;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent), 0 0 20px color-mix(in srgb, var(--accent) 12%, transparent);
+  background: var(--bg-elevated);
 }
 
 .code-input.filled {
   border-color: rgba(148, 163, 194, 0.3);
-  background: #111a2e;
+  background: var(--bg-elevated);
 }
 
 .code-input.error {
-  border-color: #f87171;
-  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.12);
+  border-color: var(--color-error);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error) 12%, transparent);
   animation: inputShake 0.4s ease;
 }
 
@@ -366,12 +365,12 @@ function handleSubmit(event: Event) {
   font-size: 0.85rem;
   font-weight: 600;
   letter-spacing: 0.02em;
-  color: #06090f;
-  background: #f59e0b;
+  color: var(--text-inverse);
+  background: var(--accent);
   border: none;
-  border-radius: 8px;
+  border-radius: 6px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: filter 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
   position: relative;
   overflow: hidden;
 }
@@ -379,7 +378,16 @@ function handleSubmit(event: Event) {
 .auth-submit:hover:not(:disabled) {
   filter: brightness(1.1);
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.auth-submit:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+}
+
+.auth-submit:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .auth-submit:disabled {
@@ -400,7 +408,7 @@ function handleSubmit(event: Event) {
   width: 18px;
   height: 18px;
   margin: -9px 0 0 -9px;
-  border: 2px solid #06090f;
+  border: 2px solid var(--text-inverse);
   border-top-color: transparent;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
@@ -410,13 +418,13 @@ function handleSubmit(event: Event) {
   margin-top: 16px;
   font-family: var(--font-mono);
   font-size: 0.75rem;
-  color: #4a5568;
+  color: var(--text-tertiary);
   min-height: 20px;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease;
 }
 
 .auth-message.error {
-  color: #f87171;
+  color: var(--color-error);
 }
 
 .terminal-hint {
@@ -425,13 +433,13 @@ function handleSubmit(event: Event) {
   left: 50%;
   transform: translateX(-50%);
   z-index: 1;
-  background: #0b1120;
-  border: 1px solid rgba(148, 163, 194, 0.1);
-  border-radius: 8px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
   padding: 10px 16px;
   font-family: var(--font-mono);
   font-size: 0.72rem;
-  color: #4a5568;
+  color: var(--text-tertiary);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -439,14 +447,8 @@ function handleSubmit(event: Event) {
   white-space: nowrap;
 }
 
-.hint-prompt {
-  color: #f59e0b;
-  font-weight: 600;
-  opacity: 0.6;
-}
-
 .hint-cmd {
-  color: #8494a7;
+  color: var(--text-secondary);
 }
 
 @keyframes gridDrift {

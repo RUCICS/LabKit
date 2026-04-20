@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import StatusBadge from '../components/chrome/StatusBadge.vue';
 import type { PublicLab } from '../components/board/types';
-import { getLabPhase, labPhaseLabel } from '../lib/labs';
+import { getLabPhase, labPhaseLabel, metricTone } from '../lib/labs';
 
 const labs = ref<PublicLab[]>([]);
 const loading = ref(true);
@@ -39,14 +39,7 @@ function labPhase(lab: PublicLab) {
 }
 
 function metricDot(metricId: string) {
-  const value = metricId.toLowerCase();
-  if (value.includes('latency')) {
-    return 'lab-card__metric-dot--latency';
-  }
-  if (value.includes('fair')) {
-    return 'lab-card__metric-dot--fairness';
-  }
-  return 'lab-card__metric-dot--throughput';
+  return `lab-card__metric-dot--${metricTone(metricId)}`;
 }
 
 function formatCloseDate(lab: PublicLab) {
@@ -58,6 +51,18 @@ function formatCloseDate(lab: PublicLab) {
     month: '2-digit',
     day: '2-digit'
   }).format(close);
+}
+
+function labContext(lab: PublicLab) {
+  const course = lab.manifest?.lab?.tags?.course?.trim();
+  const semester = lab.manifest?.lab?.tags?.semester?.trim();
+  return [course, semester].filter(Boolean).join(' · ');
+}
+
+function rankMetricName(lab: PublicLab) {
+  const rankBy = lab.manifest?.board?.rank_by;
+  const metrics = lab.manifest?.metrics ?? [];
+  return metrics.find((metric) => metric.id === rankBy)?.name ?? metrics[0]?.name ?? '';
 }
 </script>
 
@@ -88,10 +93,14 @@ function formatCloseDate(lab: PublicLab) {
             <StatusBadge :label="labPhaseLabel(labPhase(lab))" :tone="labPhase(lab)" />
           </div>
           <div class="lab-card__body">
+            <p v-if="labContext(lab)">
+              {{ labContext(lab) }}
+            </p>
             <p>
               {{ lab.manifest?.submit?.files?.[0] || 'submission' }} ·
               {{ lab.manifest?.metrics?.length ?? 0 }} metrics
             </p>
+            <p v-if="rankMetricName(lab)">ranked by {{ rankMetricName(lab) }}</p>
             <p>
               closes {{ formatCloseDate(lab) }}
             </p>
@@ -163,13 +172,20 @@ function formatCloseDate(lab: PublicLab) {
   color: var(--text-primary);
   text-decoration: none;
   transition:
-    transform 180ms ease,
-    border-color 180ms ease;
+    transform 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
 }
 
 .lab-card:hover {
   transform: translateY(-1px);
   border-color: var(--border-strong);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+}
+
+.lab-card:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
 }
 
 .lab-card__top {

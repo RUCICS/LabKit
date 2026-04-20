@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import VerdictBadge from '../components/chrome/VerdictBadge.vue';
 import {
   authorizedAdminHeaders,
   fileNameFromDisposition,
@@ -39,6 +40,14 @@ const actionNotice = ref<string | null>(null);
 let requestSeq = 0;
 
 const resolvedLabId = computed(() => props.labId ?? labIdFromPath(window.location.pathname));
+const queueStats = computed(() => {
+  const jobs = queue.value?.jobs ?? [];
+  return {
+    total: jobs.length,
+    running: jobs.filter((job) => job.status === 'running').length,
+    queued: jobs.filter((job) => job.status === 'queued').length
+  };
+});
 
 function labIdFromPath(pathname: string) {
   const match = pathname.match(/\/admin\/labs\/([^/]+)\/queue/);
@@ -208,10 +217,15 @@ onMounted(() => {
         No recent jobs.
       </p>
       <div v-else class="admin-queue-view__jobs">
+        <div class="admin-queue-view__summary">
+          <span>{{ queueStats.total }} jobs</span>
+          <span>{{ queueStats.running }} running</span>
+          <span>{{ queueStats.queued }} queued</span>
+        </div>
         <article v-for="job in queue.jobs" :key="job.id" class="admin-queue-view__job">
           <div class="admin-queue-view__job-head">
             <h2>{{ job.id }}</h2>
-            <span>{{ job.status }}</span>
+            <VerdictBadge :value="job.status" />
           </div>
           <dl class="admin-queue-view__grid">
             <div>
@@ -239,7 +253,7 @@ onMounted(() => {
               <dd>{{ formatTime(job.updated_at) }}</dd>
             </div>
           </dl>
-          <p v-if="job.last_error" class="admin-queue-view__error">{{ job.last_error }}</p>
+          <pre v-if="job.last_error" class="admin-queue-view__error">{{ job.last_error }}</pre>
         </article>
       </div>
     </section>
@@ -323,6 +337,17 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
+.admin-queue-view__summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .admin-queue-view__jobs {
   display: grid;
   gap: 14px;
@@ -335,6 +360,11 @@ onMounted(() => {
   border: 1px solid var(--border-default);
   border-radius: 10px;
   background: var(--bg-elevated);
+  transition: border-color 150ms ease;
+}
+
+.admin-queue-view__job:hover {
+  border-color: var(--border-strong);
 }
 
 .admin-queue-view__job-head {
@@ -345,19 +375,16 @@ onMounted(() => {
 }
 
 .admin-queue-view__job-head h2,
-.admin-queue-view__job-head span,
 .admin-queue-view__grid dt,
 .admin-queue-view__grid dd,
 .admin-queue-view__error {
   margin: 0;
 }
 
-.admin-queue-view__job-head span {
-  color: var(--accent);
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  font-size: 0.75rem;
-  font-weight: 700;
+.admin-queue-view__job-head h2 {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .admin-queue-view__grid {
@@ -367,17 +394,33 @@ onMounted(() => {
 }
 
 .admin-queue-view__grid dt {
-  color: var(--muted);
-  font-size: 0.85rem;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .admin-queue-view__grid dd {
   margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 
 .admin-queue-view__error {
   color: var(--danger);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  padding: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--bg-root);
+  white-space: pre-wrap;
+  overflow: auto;
 }
 
 @media (max-width: 767px) {
