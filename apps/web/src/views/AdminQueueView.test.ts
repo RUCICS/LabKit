@@ -42,7 +42,39 @@ describe('AdminQueueView actions', () => {
   it('triggers reevaluation with the stored admin token', async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       if (String(input) === '/api/admin/labs/sorting/queue') {
-        return jsonResponse({ lab_id: 'sorting', jobs: [] });
+        return jsonResponse({
+          lab_id: 'sorting',
+          jobs: [
+            {
+              id: 'job-1',
+              submission_id: 'sub-1',
+              user_id: 7,
+              status: 'running',
+              attempts: 1,
+              available_at: '2026-03-31T10:00:00Z',
+              worker_id: 'worker-1',
+              last_error: '',
+              started_at: '2026-03-31T10:01:00Z',
+              finished_at: '',
+              created_at: '2026-03-31T10:00:00Z',
+              updated_at: '2026-03-31T10:02:00Z'
+            },
+            {
+              id: 'job-2',
+              submission_id: 'sub-2',
+              user_id: 8,
+              status: 'queued',
+              attempts: 2,
+              available_at: '2026-03-31T10:05:00Z',
+              worker_id: '',
+              last_error: 'Timeout from worker',
+              started_at: '',
+              finished_at: '',
+              created_at: '2026-03-31T10:05:00Z',
+              updated_at: '2026-03-31T10:05:00Z'
+            }
+          ]
+        });
       }
       if (String(input) === '/api/admin/labs/sorting/reeval') {
         return jsonResponse({ lab_id: 'sorting', jobs_created: 2 }, 202);
@@ -54,6 +86,11 @@ describe('AdminQueueView actions', () => {
 
     const view = await mountQueue();
     expect(document.body.textContent).not.toContain('队列状态、成绩导出与重评操作。');
+    expect(document.body.textContent).toContain('queued');
+    expect(document.body.textContent).toContain('running');
+    expect(document.body.textContent).toContain('Timeout from worker');
+    expect(document.body.textContent).toContain('2 jobs');
+    expect(document.body.textContent).toContain('1 running');
     const button = Array.from(document.querySelectorAll('button')).find((candidate) =>
       candidate.textContent?.includes('Reevaluate')
     ) as HTMLButtonElement | undefined;

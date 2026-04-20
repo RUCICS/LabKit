@@ -51,6 +51,7 @@ export interface LabManifestSchedule {
 
 export interface LabManifestBoard {
   pick?: boolean;
+  rank_by?: string;
 }
 
 export interface LabManifest {

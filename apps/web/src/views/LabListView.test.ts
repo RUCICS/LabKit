@@ -53,6 +53,15 @@ describe('LabListView', () => {
                   { id: 'runtime_ms', name: 'Runtime', sort: 'desc' },
                   { id: 'latency_ms', name: 'Latency', sort: 'asc' }
                 ],
+                lab: {
+                  tags: {
+                    course: 'ICS2',
+                    semester: '2026 Spring'
+                  }
+                },
+                board: {
+                  rank_by: 'runtime_ms'
+                },
                 schedule: {
                   open: '2026-03-01T00:00:00Z',
                   close: '2026-06-01T00:00:00Z'
@@ -94,6 +103,9 @@ describe('LabListView', () => {
     expect(document.body.textContent).toContain('OPEN');
     expect(document.body.textContent).toContain('Runtime');
     expect(document.body.textContent).toContain('Latency');
+    expect(document.body.textContent).toContain('ICS2');
+    expect(document.body.textContent).toContain('2026 Spring');
+    expect(document.body.textContent).toContain('ranked by Runtime');
     expect(document.body.textContent).toContain('closes');
     expect(document.body.textContent).not.toContain('Open a board, track standings, and jump back in quickly.');
     const links = Array.from(document.querySelectorAll('a'));

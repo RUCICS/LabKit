@@ -7,6 +7,7 @@ import LeaderboardTable from '../components/board/LeaderboardTable.vue';
 import QuotaSummaryBar from '../components/chrome/QuotaSummaryBar.vue';
 import type { LeaderboardBoard, LeaderboardLabDetail } from '../components/board/types';
 import { readAPIError } from '../lib/http';
+import { metricAccentTokens } from '../lib/labs';
 
 const props = defineProps<{
   labId: string;
@@ -54,7 +55,8 @@ const statItems = computed(() => {
   ];
 });
 const accentStyle = computed(() => {
-  const token = metricAccent(activeMetric.value || props.labId);
+  const metricIndex = board.value?.metrics.findIndex((m) => m.id === activeMetric.value) ?? -1;
+  const token = metricAccentTokens(activeMetric.value || props.labId, metricIndex >= 0 ? metricIndex : undefined);
   return {
     '--accent': `var(${token.color})`,
     '--accent-dim': `var(${token.dim})`
@@ -83,17 +85,6 @@ function formatLabTitle(labId: string) {
     .filter(Boolean)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1));
   return `${words.join(' ')} Lab`;
-}
-
-function metricAccent(metricId: string) {
-  const value = metricId.toLowerCase();
-  if (value.includes('latency')) {
-    return { color: '--track-latency', dim: '--track-latency-dim' };
-  }
-  if (value.includes('fair')) {
-    return { color: '--track-fairness', dim: '--track-fairness-dim' };
-  }
-  return { color: '--track-throughput', dim: '--track-throughput-dim' };
 }
 
 function formatRemaining(closeAt: number) {

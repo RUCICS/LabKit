@@ -15,15 +15,15 @@ function handleSelect(metricId: string) {
   emit('select', metricId);
 }
 
-function metricToneClass(metricId: string) {
-  return `board-tabs__dot--${metricTone(metricId)}`;
+function metricToneClass(metricId: string, index: number) {
+  return `board-tabs__dot--${metricTone(metricId, index)}`;
 }
 </script>
 
 <template>
   <div class="board-tabs" role="tablist" aria-label="Metrics">
     <button
-      v-for="metric in metrics"
+      v-for="(metric, index) in metrics"
       :key="metric.id"
       type="button"
       class="board-tabs__button"
@@ -32,7 +32,7 @@ function metricToneClass(metricId: string) {
       :class="{ 'board-tabs__button--selected': metric.id === selectedMetricId }"
       @click="handleSelect(metric.id)"
     >
-      <span class="board-tabs__dot" :class="metricToneClass(metric.id)" />
+      <span class="board-tabs__dot" :class="metricToneClass(metric.id, index)" />
       <span class="board-tabs__name">{{ metric.name }}</span>
     </button>
   </div>

@@ -62,7 +62,20 @@ describe('AdminLabsView', () => {
       'fetch',
       vi.fn(async () =>
         jsonResponse({
-          labs: [{ id: 'sorting', name: 'Sorting Lab' }]
+          labs: [{
+            id: 'sorting',
+            name: 'Sorting Lab',
+            manifest: {
+              metrics: [
+                { id: 'runtime_ms', name: 'Runtime', sort: 'asc' },
+                { id: 'latency_ms', name: 'Latency', sort: 'asc' }
+              ],
+              schedule: {
+                open: '2026-03-10T00:00:00Z',
+                close: '2026-04-30T00:00:00Z'
+              }
+            }
+          }]
         })
       )
     );
@@ -90,6 +103,8 @@ describe('AdminLabsView', () => {
     expect(link?.getAttribute('href')).toBe('/admin/labs/sorting/queue');
     expect(window.location.search).toBe('');
     expect(window.sessionStorage.getItem('labkit_admin_token')).toBe('secret');
+    expect(document.body.textContent).toContain('OPEN');
+    expect(document.body.textContent).toContain('2 metrics');
 
     app.unmount();
     el.remove();

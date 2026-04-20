@@ -38,8 +38,8 @@ function labPhase(lab: PublicLab) {
   return getLabPhase(lab.manifest?.schedule);
 }
 
-function metricDot(metricId: string) {
-  return `lab-card__metric-dot--${metricTone(metricId)}`;
+function metricDot(metricId: string, index: number) {
+  return `lab-card__metric-dot--${metricTone(metricId, index)}`;
 }
 
 function formatCloseDate(lab: PublicLab) {
@@ -107,11 +107,11 @@ function rankMetricName(lab: PublicLab) {
           </div>
           <div v-if="lab.manifest?.metrics?.length" class="lab-card__metrics">
             <span
-              v-for="metric in lab.manifest.metrics"
+              v-for="(metric, metricIndex) in lab.manifest.metrics"
               :key="metric.id"
               class="lab-card__metric"
             >
-              <span class="lab-card__metric-dot" :class="metricDot(metric.id)" />
+              <span class="lab-card__metric-dot" :class="metricDot(metric.id, metricIndex)" />
               {{ metric.name }}
             </span>
           </div>

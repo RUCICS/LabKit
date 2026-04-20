@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { LeaderboardMetric, LeaderboardRow } from './types';
+import { metricTone } from '../../lib/labs';
 
 const props = defineProps<{
   rows: LeaderboardRow[];
@@ -79,14 +80,7 @@ function formatFooterDate(value: number) {
 }
 
 function trackClass(track: string | undefined) {
-  const value = (track ?? '').toLowerCase();
-  if (value.includes('latency')) {
-    return 'board-table__track-indicator--latency';
-  }
-  if (value.includes('fair')) {
-    return 'board-table__track-indicator--fairness';
-  }
-  return 'board-table__track-indicator--throughput';
+  return `board-table__track-indicator--${metricTone(track ?? '')}`;
 }
 </script>
 
