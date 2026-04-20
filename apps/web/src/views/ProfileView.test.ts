@@ -170,12 +170,16 @@ describe('ProfileView', () => {
 
     const view = await mountProfileView('/profile');
 
-    expect(document.body.textContent).toContain('Identity');
-    expect(document.body.textContent).toContain('Devices');
+    const h1s = Array.from(document.querySelectorAll('h1')).map((node) => node.textContent?.trim());
+    expect(h1s).toEqual(['Profile']);
+
+    const h2s = Array.from(document.querySelectorAll('h2')).map((node) => node.textContent?.trim());
+    expect(h2s).toEqual(expect.arrayContaining(['Identity', 'Devices', 'Activity']));
+
     expect(document.body.textContent).toContain('Laptop');
     expect(document.body.textContent).toContain('Phone');
-    expect(document.body.textContent).toContain('Activity');
     expect(document.body.textContent).toContain('sorting');
+    expect(document.body.textContent).toContain('Copy key');
     expect(document.body.textContent).not.toContain('已绑定设备与密钥指纹。');
     expect(fetchMock).toHaveBeenCalledWith('/api/profile', expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenCalledWith('/api/keys', expect.objectContaining({ credentials: 'include' }));

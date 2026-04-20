@@ -2,6 +2,9 @@
 import { onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { readAPIError } from '../lib/http';
+import PageTitleBlock from '../components/chrome/PageTitleBlock.vue';
+import SectionHeader from '../components/chrome/SectionHeader.vue';
+import DeviceKeyRow from '../components/profile/DeviceKeyRow.vue';
 
 type Key = {
   id: number;
@@ -106,11 +109,14 @@ onMounted(() => {
 
 <template>
   <main class="page-shell profile-view" data-testid="page-shell">
+    <PageTitleBlock
+      title="Profile"
+      eyebrow="Personal console"
+      lede="Update your identity, manage device keys, and review recent activity."
+    />
+
     <section class="profile-view__panel">
-      <div class="profile-view__header">
-        <h1>Identity</h1>
-        <p>Global profile</p>
-      </div>
+      <SectionHeader title="Identity" subtitle="Global profile" />
       <form class="profile-view__form" @submit.prevent="saveNickname">
         <label class="profile-view__field">
           <span>Nickname</span>
@@ -123,45 +129,45 @@ onMounted(() => {
     </section>
 
     <section class="profile-view__panel">
-      <div class="profile-view__header">
-        <h1>Devices</h1>
-        <p>Registered keys</p>
-      </div>
+      <SectionHeader title="Devices" subtitle="Registered keys" />
       <p v-if="loading" class="profile-view__status">Loading keys…</p>
       <p v-else-if="error" class="profile-view__status">{{ error }}</p>
       <p v-else-if="keys.length === 0" class="profile-view__status">No keys are registered yet.</p>
-      <ul v-else class="profile-view__list">
-        <li v-for="key in keys" :key="key.id" class="profile-view__card">
-          <div class="profile-view__card-head">
-            <h2>{{ key.device_name }}</h2>
-            <span>Key {{ key.id }}</span>
-          </div>
-          <p class="profile-view__mono">{{ key.public_key }}</p>
-          <p class="profile-view__meta">Created {{ formatCreatedAt(key.created_at) }}</p>
+      <ul v-else class="profile-view__rows">
+        <li v-for="key in keys" :key="key.id">
+          <DeviceKeyRow :device-key="key" :created-at="formatCreatedAt(key.created_at)" />
         </li>
       </ul>
     </section>
 
     <section class="profile-view__panel">
-      <div class="profile-view__header">
-        <h1>Activity</h1>
-        <p>Recent submissions</p>
-      </div>
+      <SectionHeader title="Activity" subtitle="Recent submissions" />
       <p v-if="error" class="profile-view__status">{{ error }}</p>
       <p v-else-if="(profile?.recent_activity?.length ?? 0) === 0" class="profile-view__status">
         No recent activity yet.
       </p>
-      <ul v-else class="profile-view__list">
-        <li v-for="item in profile?.recent_activity" :key="item.id" class="profile-view__card">
-          <div class="profile-view__card-head">
-            <h2>{{ item.lab_id }}</h2>
-            <span>{{ item.status }}</span>
+      <ul v-else class="profile-view__rows">
+        <li v-for="item in profile?.recent_activity" :key="item.id">
+          <div class="profile-view__row">
+            <div class="profile-view__row-copy">
+              <p class="profile-view__row-title">{{ item.lab_id }}</p>
+              <p class="profile-view__row-subtitle">
+                Submitted {{ formatCreatedAt(item.created_at) }}
+              </p>
+            </div>
+
+            <div class="profile-view__row-meta">
+              <span class="profile-view__row-tag">{{ item.status }}</span>
+              <span class="profile-view__row-actions">
+                <RouterLink class="profile-view__row-action" :to="`/labs/${item.lab_id}/board`">
+                  Board
+                </RouterLink>
+                <RouterLink class="profile-view__row-action" :to="`/labs/${item.lab_id}/history`">
+                  History
+                </RouterLink>
+              </span>
+            </div>
           </div>
-          <p class="profile-view__meta">Submitted {{ formatCreatedAt(item.created_at) }}</p>
-          <p class="profile-view__links">
-            <RouterLink class="profile-view__link" :to="`/labs/${item.lab_id}/board`">Board</RouterLink>
-            <RouterLink class="profile-view__link" :to="`/labs/${item.lab_id}/history`">History</RouterLink>
-          </p>
         </li>
       </ul>
     </section>
@@ -177,7 +183,7 @@ onMounted(() => {
 
 .profile-view__panel {
   display: grid;
-  gap: 18px;
+  gap: 16px;
   padding: 24px;
   border: 1px solid var(--border-default);
   border-radius: 10px;
@@ -234,71 +240,68 @@ onMounted(() => {
   cursor: not-allowed;
 }
 
-.profile-view__header {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.profile-view__header h1,
-.profile-view__header p {
-  margin: 0;
-}
-
-.profile-view__header h1 {
-  font-family: var(--font-mono);
-  font-size: 1.7rem;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-}
-
-.profile-view__header p {
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
 .profile-view__status {
   margin: 0;
   color: var(--text-secondary);
 }
 
-.profile-view__list {
+.profile-view__rows {
   display: grid;
-  gap: 14px;
+  gap: 10px;
   padding: 0;
   margin: 0;
   list-style: none;
 }
 
-.profile-view__card {
-  display: grid;
-  gap: 10px;
-  padding: 16px;
+.profile-view__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  min-height: 44px;
+  padding: 12px 14px;
   border: 1px solid var(--border-default);
   border-radius: 10px;
   background: var(--bg-elevated);
 }
 
-.profile-view__card-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: baseline;
+.profile-view__row-copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  flex: 1 1 14rem;
 }
 
-.profile-view__card-head h2,
-.profile-view__card-head span,
-.profile-view__mono,
-.profile-view__meta {
+.profile-view__row-title,
+.profile-view__row-subtitle {
   margin: 0;
 }
 
-.profile-view__card-head span,
-.profile-view__meta {
+.profile-view__row-title {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.profile-view__row-subtitle {
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.profile-view__row-meta {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 1 auto;
+}
+
+.profile-view__row-tag {
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 0.72rem;
@@ -306,19 +309,18 @@ onMounted(() => {
   text-transform: uppercase;
 }
 
-.profile-view__mono {
-  overflow-wrap: anywhere;
-  font-family: var(--font-mono);
-  color: var(--accent);
-}
-
-.profile-view__links {
+.profile-view__row-actions {
   display: flex;
-  gap: 12px;
+  gap: 10px;
+  align-items: center;
 }
 
-.profile-view__link {
-  color: var(--text-secondary);
+.profile-view__row-action {
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-default);
+  background: transparent;
+  color: var(--text-tertiary);
   text-decoration: none;
   font-family: var(--font-mono);
   font-size: 0.72rem;
@@ -326,18 +328,14 @@ onMounted(() => {
   text-transform: uppercase;
 }
 
-.profile-view__link:hover {
+.profile-view__row-action:hover {
   color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border-default));
 }
 
 @media (max-width: 767px) {
   .profile-view {
     padding-top: 8px;
-  }
-
-  .profile-view__header {
-    flex-direction: column;
-    align-items: start;
   }
 }
 </style>
