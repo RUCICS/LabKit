@@ -55,8 +55,8 @@ const statItems = computed(() => {
   ];
 });
 const accentStyle = computed(() => {
-  const metricIndex = board.value?.metrics.findIndex((m) => m.id === activeMetric.value) ?? -1;
-  const token = metricAccentTokens(activeMetric.value || props.labId, metricIndex >= 0 ? metricIndex : undefined);
+  const index = Math.max(board.value?.metrics.findIndex((m) => m.id === activeMetric.value) ?? 0, 0);
+  const token = metricAccentTokens(index);
   return {
     '--accent': `var(${token.color})`,
     '--accent-dim': `var(${token.dim})`

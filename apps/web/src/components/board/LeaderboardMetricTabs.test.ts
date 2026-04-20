@@ -13,11 +13,11 @@ async function mountTabs() {
   document.body.appendChild(el);
   const app = createApp(LeaderboardMetricTabs, {
     metrics: [
-      { id: 'throughput', name: 'Throughput', sort: 'desc' },
-      { id: 'latency', name: 'Latency', sort: 'asc' },
-      { id: 'fairness', name: 'Fairness', sort: 'desc' }
+      { id: 'speed', name: 'Speed', sort: 'desc' },
+      { id: 'memory', name: 'Memory', sort: 'asc' },
+      { id: 'quality', name: 'Quality', sort: 'desc' }
     ],
-    selectedMetricId: 'throughput'
+    selectedMetricId: 'speed'
   });
   app.mount(el);
   await flushPromises();
@@ -38,13 +38,13 @@ afterEach(() => {
 });
 
 describe('LeaderboardMetricTabs', () => {
-  it('uses per-metric visual tones for each tab', async () => {
+  it('assigns positional tone colors to each tab dot', async () => {
     const view = await mountTabs();
     const dots = Array.from(document.querySelectorAll('.board-tabs__dot'));
 
-    expect(dots[0]?.className).toContain('throughput');
-    expect(dots[1]?.className).toContain('latency');
-    expect(dots[2]?.className).toContain('fairness');
+    expect(dots[0]?.className).toContain('amber');
+    expect(dots[1]?.className).toContain('cyan');
+    expect(dots[2]?.className).toContain('purple');
 
     view.unmount();
   });

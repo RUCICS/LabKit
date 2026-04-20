@@ -38,8 +38,8 @@ function labPhase(lab: PublicLab) {
   return getLabPhase(lab.manifest?.schedule);
 }
 
-function metricDot(metricId: string, index: number) {
-  return `lab-card__metric-dot--${metricTone(metricId, index)}`;
+function metricDot(index: number) {
+  return `lab-card__metric-dot--${metricTone(index)}`;
 }
 
 function formatCloseDate(lab: PublicLab) {
@@ -111,7 +111,7 @@ function rankMetricName(lab: PublicLab) {
               :key="metric.id"
               class="lab-card__metric"
             >
-              <span class="lab-card__metric-dot" :class="metricDot(metric.id, metricIndex)" />
+              <span class="lab-card__metric-dot" :class="metricDot(metricIndex)" />
               {{ metric.name }}
             </span>
           </div>
@@ -246,16 +246,16 @@ function rankMetricName(lab: PublicLab) {
   border-radius: 50%;
 }
 
-.lab-card__metric-dot--throughput {
-  background: var(--track-throughput);
+.lab-card__metric-dot--amber {
+  background: var(--tone-amber);
 }
 
-.lab-card__metric-dot--latency {
-  background: var(--track-latency);
+.lab-card__metric-dot--cyan {
+  background: var(--tone-cyan);
 }
 
-.lab-card__metric-dot--fairness {
-  background: var(--track-fairness);
+.lab-card__metric-dot--purple {
+  background: var(--tone-purple);
 }
 
 @media (max-width: 767px) {

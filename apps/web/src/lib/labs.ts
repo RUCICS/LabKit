@@ -33,28 +33,15 @@ export function formatQuotaSummary(quota?: QuotaSummary | null) {
   return `${quota.left} left today · ${quota.used}/${quota.daily} used`;
 }
 
-export type TrackTone = 'throughput' | 'latency' | 'fairness';
+export type TrackTone = 'amber' | 'cyan' | 'purple';
 
-const TONE_CYCLE: TrackTone[] = ['throughput', 'latency', 'fairness'];
+const TONES: TrackTone[] = ['amber', 'cyan', 'purple'];
 
-/**
- * Resolve a metric / track id to one of the three canonical track tones.
- * Known CoLab names match by keyword; unknown names fall back to a
- * positional color cycle when `index` is provided, otherwise default
- * to throughput (amber) per the design spec.
- */
-export function metricTone(metricId: string, index?: number): TrackTone {
-  const value = metricId.toLowerCase();
-  if (value.includes('throughput')) return 'throughput';
-  if (value.includes('latency')) return 'latency';
-  if (value.includes('fair')) return 'fairness';
-  if (typeof index === 'number') {
-    return TONE_CYCLE[index % TONE_CYCLE.length];
-  }
-  return 'throughput';
+export function metricTone(index: number): TrackTone {
+  return TONES[index % TONES.length];
 }
 
-export function metricAccentTokens(metricId: string, index?: number) {
-  const tone = metricTone(metricId, index);
-  return { color: `--track-${tone}`, dim: `--track-${tone}-dim` };
+export function metricAccentTokens(index: number) {
+  const tone = metricTone(index);
+  return { color: `--tone-${tone}`, dim: `--tone-${tone}-dim` };
 }

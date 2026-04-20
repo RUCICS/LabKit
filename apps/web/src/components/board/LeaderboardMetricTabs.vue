@@ -15,8 +15,8 @@ function handleSelect(metricId: string) {
   emit('select', metricId);
 }
 
-function metricToneClass(metricId: string, index: number) {
-  return `board-tabs__dot--${metricTone(metricId, index)}`;
+function metricToneClass(index: number) {
+  return `board-tabs__dot--${metricTone(index)}`;
 }
 </script>
 
@@ -32,7 +32,7 @@ function metricToneClass(metricId: string, index: number) {
       :class="{ 'board-tabs__button--selected': metric.id === selectedMetricId }"
       @click="handleSelect(metric.id)"
     >
-      <span class="board-tabs__dot" :class="metricToneClass(metric.id, index)" />
+      <span class="board-tabs__dot" :class="metricToneClass(index)" />
       <span class="board-tabs__name">{{ metric.name }}</span>
     </button>
   </div>
@@ -92,19 +92,19 @@ function metricToneClass(metricId: string, index: number) {
   box-shadow: 0 0 6px 2px currentColor;
 }
 
-.board-tabs__dot--throughput {
-  background: var(--track-throughput);
-  color: var(--track-throughput);
+.board-tabs__dot--amber {
+  background: var(--tone-amber);
+  color: var(--tone-amber);
 }
 
-.board-tabs__dot--latency {
-  background: var(--track-latency);
-  color: var(--track-latency);
+.board-tabs__dot--cyan {
+  background: var(--tone-cyan);
+  color: var(--tone-cyan);
 }
 
-.board-tabs__dot--fairness {
-  background: var(--track-fairness);
-  color: var(--track-fairness);
+.board-tabs__dot--purple {
+  background: var(--tone-purple);
+  color: var(--tone-purple);
 }
 
 .board-tabs__name {

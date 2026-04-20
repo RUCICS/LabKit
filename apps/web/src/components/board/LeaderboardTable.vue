@@ -80,7 +80,8 @@ function formatFooterDate(value: number) {
 }
 
 function trackClass(track: string | undefined) {
-  return `board-table__track-indicator--${metricTone(track ?? '')}`;
+  const index = Math.max(props.metrics.findIndex((m) => m.id === track), 0);
+  return `board-table__track-indicator--${metricTone(index)}`;
 }
 </script>
 
@@ -246,16 +247,16 @@ tbody tr:hover td {
   flex: 0 0 auto;
 }
 
-.board-table__track-indicator--throughput {
-  background: var(--track-throughput);
+.board-table__track-indicator--amber {
+  background: var(--tone-amber);
 }
 
-.board-table__track-indicator--latency {
-  background: var(--track-latency);
+.board-table__track-indicator--cyan {
+  background: var(--tone-cyan);
 }
 
-.board-table__track-indicator--fairness {
-  background: var(--track-fairness);
+.board-table__track-indicator--purple {
+  background: var(--tone-purple);
 }
 
 .board-table__metric {
