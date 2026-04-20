@@ -222,39 +222,79 @@ onMounted(() => {
           <span>{{ queueStats.running }} running</span>
           <span>{{ queueStats.queued }} queued</span>
         </div>
-        <article v-for="job in queue.jobs" :key="job.id" class="admin-queue-view__job">
-          <div class="admin-queue-view__job-head">
-            <h2>{{ job.id }}</h2>
-            <VerdictBadge :value="job.status" />
+        <div class="admin-queue-view__table" role="table" aria-label="Queue jobs">
+          <div class="admin-queue-view__row admin-queue-view__row--head" role="row">
+            <div class="admin-queue-view__cell admin-queue-view__cell--head" role="columnheader">
+              Job
+            </div>
+            <div class="admin-queue-view__cell admin-queue-view__cell--head" role="columnheader">
+              Status
+            </div>
+            <div class="admin-queue-view__cell admin-queue-view__cell--head" role="columnheader">
+              Submission
+            </div>
+            <div class="admin-queue-view__cell admin-queue-view__cell--head" role="columnheader">
+              User
+            </div>
+            <div class="admin-queue-view__cell admin-queue-view__cell--head" role="columnheader">
+              Attempts
+            </div>
+            <div class="admin-queue-view__cell admin-queue-view__cell--head" role="columnheader">
+              Worker
+            </div>
+            <div class="admin-queue-view__cell admin-queue-view__cell--head" role="columnheader">
+              Available
+            </div>
+            <div class="admin-queue-view__cell admin-queue-view__cell--head" role="columnheader">
+              Updated
+            </div>
+            <div class="admin-queue-view__cell admin-queue-view__cell--head" role="columnheader">
+              Error
+            </div>
           </div>
-          <dl class="admin-queue-view__grid">
-            <div>
-              <dt>Submission</dt>
-              <dd>{{ job.submission_id }}</dd>
+
+          <div
+            v-for="job in queue.jobs"
+            :key="job.id"
+            class="admin-queue-view__row"
+            role="row"
+            :data-testid="`queue-row-${job.id}`"
+          >
+            <div class="admin-queue-view__cell admin-queue-view__job-id" role="cell">
+              {{ job.id }}
             </div>
-            <div>
-              <dt>User</dt>
-              <dd>{{ job.user_id }}</dd>
+            <div class="admin-queue-view__cell" role="cell">
+              <VerdictBadge :value="job.status" />
             </div>
-            <div>
-              <dt>Attempts</dt>
-              <dd>{{ job.attempts }}</dd>
+            <div class="admin-queue-view__cell" role="cell">
+              {{ job.submission_id }}
             </div>
-            <div>
-              <dt>Worker</dt>
-              <dd>{{ job.worker_id || '—' }}</dd>
+            <div class="admin-queue-view__cell" role="cell">{{ job.user_id }}</div>
+            <div class="admin-queue-view__cell admin-queue-view__number" role="cell">
+              {{ job.attempts }}
             </div>
-            <div>
-              <dt>Available</dt>
-              <dd>{{ formatTime(job.available_at) }}</dd>
+            <div class="admin-queue-view__cell admin-queue-view__mono" role="cell">
+              {{ job.worker_id || '—' }}
             </div>
-            <div>
-              <dt>Updated</dt>
-              <dd>{{ formatTime(job.updated_at) }}</dd>
+            <div class="admin-queue-view__cell admin-queue-view__mono" role="cell">
+              {{ formatTime(job.available_at) }}
             </div>
-          </dl>
-          <pre v-if="job.last_error" class="admin-queue-view__error">{{ job.last_error }}</pre>
-        </article>
+            <div class="admin-queue-view__cell admin-queue-view__mono" role="cell">
+              {{ formatTime(job.updated_at) }}
+            </div>
+            <div class="admin-queue-view__cell" role="cell">
+              <details
+                v-if="job.last_error"
+                class="admin-queue-view__error-details"
+                :data-testid="`job-${job.id}-error`"
+              >
+                <summary class="admin-queue-view__error-summary">Last error</summary>
+                <pre class="admin-queue-view__error">{{ job.last_error }}</pre>
+              </details>
+              <span v-else class="admin-queue-view__empty">—</span>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   </main>
@@ -353,72 +393,116 @@ onMounted(() => {
   gap: 14px;
 }
 
-.admin-queue-view__job {
-  display: grid;
-  gap: 14px;
-  padding: 16px;
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
-  background: var(--bg-elevated);
-  transition: border-color 150ms ease;
-}
-
-.admin-queue-view__job:hover {
-  border-color: var(--border-strong);
-}
-
-.admin-queue-view__job-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: baseline;
-}
-
-.admin-queue-view__job-head h2,
-.admin-queue-view__grid dt,
-.admin-queue-view__grid dd,
 .admin-queue-view__error {
   margin: 0;
 }
 
-.admin-queue-view__job-head h2 {
-  font-family: var(--font-mono);
-  font-size: 0.9rem;
-  font-weight: 600;
+.admin-queue-view__table {
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-elevated);
 }
 
-.admin-queue-view__grid {
+.admin-queue-view__row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: 1.2fr 0.8fr 1fr 0.6fr 0.6fr 1fr 1.1fr 1.1fr 1.2fr;
+  align-items: start;
   gap: 12px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--border-default);
 }
 
-.admin-queue-view__grid dt {
-  color: var(--text-tertiary);
+.admin-queue-view__row:first-child {
+  border-top: none;
+}
+
+.admin-queue-view__row--head {
+  background: var(--bg-surface);
+}
+
+.admin-queue-view__row:not(.admin-queue-view__row--head):hover {
+  background: color-mix(in srgb, var(--bg-elevated) 92%, var(--bg-root));
+}
+
+.admin-queue-view__cell {
+  min-width: 0;
   font-family: var(--font-mono);
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.admin-queue-view__cell--head {
+  color: var(--text-tertiary);
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-.admin-queue-view__grid dd {
-  margin-top: 4px;
+.admin-queue-view__job-id {
   font-family: var(--font-mono);
   font-size: 0.9rem;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+
+.admin-queue-view__mono {
+  color: var(--text-secondary);
+}
+
+.admin-queue-view__number {
+  text-align: right;
+}
+
+.admin-queue-view__empty {
+  color: var(--text-tertiary);
+}
+
+.admin-queue-view__error-details {
+  color: var(--danger);
+}
+
+.admin-queue-view__error-summary {
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  list-style: none;
+}
+
+.admin-queue-view__error-summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: 8px;
+}
+
+.admin-queue-view__error-summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-queue-view__error-summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 8px;
+  transform: translateY(-0.5px);
+}
+
+.admin-queue-view__error-details[open] > .admin-queue-view__error-summary::before {
+  content: '▾';
 }
 
 .admin-queue-view__error {
   color: var(--danger);
   font-family: var(--font-mono);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   line-height: 1.5;
-  padding: 12px;
-  border: 1px solid var(--border-default);
-  border-radius: 6px;
-  background: var(--bg-root);
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--border-default) 70%, var(--danger));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-root) 92%, var(--danger));
   white-space: pre-wrap;
   overflow: auto;
 }
@@ -427,6 +511,27 @@ onMounted(() => {
   .admin-queue-view__header {
     flex-direction: column;
     align-items: start;
+  }
+
+  .admin-queue-view__row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .admin-queue-view__row--head {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .admin-queue-view__number {
+    text-align: left;
   }
 }
 </style>

@@ -88,9 +88,20 @@ describe('AdminQueueView actions', () => {
     expect(document.body.textContent).not.toContain('队列状态、成绩导出与重评操作。');
     expect(document.body.textContent).toContain('queued');
     expect(document.body.textContent).toContain('running');
-    expect(document.body.textContent).toContain('Timeout from worker');
     expect(document.body.textContent).toContain('2 jobs');
     expect(document.body.textContent).toContain('1 running');
+
+    const errorDetails = document.querySelector('[data-testid="job-job-2-error"]') as
+      | HTMLDetailsElement
+      | null;
+    expect(errorDetails).toBeTruthy();
+    expect(errorDetails?.hasAttribute('open')).toBe(false);
+
+    errorDetails!.open = true;
+    await flush();
+    expect(errorDetails?.hasAttribute('open')).toBe(true);
+    expect(errorDetails?.textContent).toContain('Timeout from worker');
+
     const button = Array.from(document.querySelectorAll('button')).find((candidate) =>
       candidate.textContent?.includes('Reevaluate')
     ) as HTMLButtonElement | undefined;
