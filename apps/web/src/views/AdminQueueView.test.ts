@@ -40,7 +40,7 @@ afterEach(() => {
 
 describe('AdminQueueView actions', () => {
   it('triggers reevaluation with the stored admin token', async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       if (String(input) === '/api/admin/labs/sorting/queue') {
         return jsonResponse({
           lab_id: 'sorting',
@@ -132,7 +132,7 @@ describe('AdminQueueView actions', () => {
       return el;
     }) as typeof document.createElement);
 
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
       if (String(input) === '/api/admin/labs/sorting/queue') {
         return jsonResponse({ lab_id: 'sorting', jobs: [] });
       }

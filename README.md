@@ -100,6 +100,10 @@ The admin SPA now covers:
 
 ## CLI Quickstart
 
+详细 CLI 文档：
+
+- [LabKit CLI 使用说明](/home/starrydream/ICS2/LabKit/docs/reference/cli.md)
+
 Build or run the CLI directly:
 
 ```bash
@@ -220,6 +224,7 @@ After the bind succeeds, the `labkit auth` process in terminal A will finish and
 
 Further references:
 
+- [LabKit CLI 使用说明](/home/starrydream/ICS2/LabKit/docs/reference/cli.md)
 - [本地认证与 Admin 鉴权说明](/home/starrydream/ICS2/LabKit/docs/reference/local-auth.md)
 - [Lab 编写与 Evaluator 协议说明](/home/starrydream/ICS2/LabKit/docs/reference/lab-authoring.md)
 - [示例 manifest](/home/starrydream/ICS2/LabKit/examples/labs/local-smoke.lab.toml)
