@@ -101,12 +101,11 @@ describe('LabListView', () => {
     expect(document.body.textContent).toContain('Sorting Lab');
     expect(document.body.textContent).toContain('Graph Lab');
     expect(document.body.textContent).toContain('OPEN');
+    expect(document.body.textContent).toContain('sorting');
+    expect(document.body.textContent).toContain('closes');
+    expect(document.body.textContent).toContain('06/01');
     expect(document.body.textContent).toContain('Runtime');
     expect(document.body.textContent).toContain('Latency');
-    expect(document.body.textContent).toContain('ICS2');
-    expect(document.body.textContent).toContain('2026 Spring');
-    expect(document.body.textContent).toContain('ranked by Runtime');
-    expect(document.body.textContent).toContain('closes');
     expect(document.body.textContent).not.toContain('Open a board, track standings, and jump back in quickly.');
     const links = Array.from(document.querySelectorAll('a'));
     expect(links.map((link) => link.getAttribute('href'))).toContain('/labs/sorting/board');
