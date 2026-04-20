@@ -2,6 +2,8 @@
 import { computed, onMounted, ref } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import type { PublicLab } from '../components/board/types';
+import PageTitleBlock from '../components/chrome/PageTitleBlock.vue';
+import SectionHeader from '../components/chrome/SectionHeader.vue';
 import StatusBadge from '../components/chrome/StatusBadge.vue';
 import {
   adminTokenStorageKey,
@@ -132,36 +134,48 @@ onMounted(() => {
 
 <template>
   <main class="page-shell admin-labs-view" data-testid="page-shell">
-    <section class="admin-labs-view__header">
-      <h1>Labs</h1>
-      <p>Admin catalog</p>
-    </section>
+    <PageTitleBlock title="Labs" eyebrow="Admin" lede="Register, update, and maintain labs.">
+      <template #actions>
+        <p class="admin-labs-view__token">
+          Token key:
+          <span>{{ adminTokenStorageKey }}</span>
+        </p>
+      </template>
+    </PageTitleBlock>
 
     <section class="admin-labs-view__layout">
       <section class="admin-labs-view__panel">
-        <div class="admin-labs-view__section-head">
-          <div>
-            <h2>Catalog</h2>
-            <p>{{ labs.length }} lab<span v-if="labs.length !== 1">s</span></p>
-          </div>
-          <button type="button" class="button button--secondary" @click="resetForm">New</button>
-        </div>
+        <SectionHeader
+          title="Catalog"
+          :subtitle="`${labs.length} lab${labs.length === 1 ? '' : 's'}`"
+        >
+          <template #actions>
+            <button type="button" class="button button--secondary" @click="resetForm">New</button>
+          </template>
+        </SectionHeader>
         <p v-if="loading" class="admin-labs-view__status">Loading labs…</p>
         <p v-else-if="error" class="admin-labs-view__status">{{ error }}</p>
         <p v-else-if="labs.length === 0" class="admin-labs-view__status">No labs yet.</p>
-        <div v-else class="admin-labs-view__grid">
-          <article v-for="lab in labs" :key="lab.id" class="admin-labs-view__card">
-            <div class="admin-labs-view__card-copy">
-              <div class="admin-labs-view__card-head">
-                <h3>{{ lab.name }}</h3>
+        <div v-else class="admin-labs-view__rows" role="list">
+          <article v-for="lab in labs" :key="lab.id" class="admin-labs-view__row" role="listitem">
+            <div class="admin-labs-view__row-main">
+              <div class="admin-labs-view__row-title">
+                <h3 class="admin-labs-view__row-name">{{ lab.name }}</h3>
                 <StatusBadge :label="labPhaseLabel(labPhase(lab))" :tone="labPhase(lab)" />
               </div>
-              <p>{{ lab.id }}</p>
-              <p v-if="lab.manifest?.metrics?.length" class="admin-labs-view__card-meta">
+              <p class="admin-labs-view__row-id">{{ lab.id }}</p>
+            </div>
+
+            <div class="admin-labs-view__row-meta">
+              <p v-if="lab.manifest?.metrics?.length" class="admin-labs-view__row-metrics">
                 {{ lab.manifest.metrics.length }} metrics
               </p>
+              <p v-else class="admin-labs-view__row-metrics admin-labs-view__row-metrics--muted">
+                No metrics
+              </p>
             </div>
-            <div class="admin-labs-view__card-actions">
+
+            <div class="admin-labs-view__row-actions" data-testid="lab-row-actions">
               <button type="button" class="button button--secondary" @click="beginUpdate(lab.id)">
                 Edit
               </button>
@@ -177,12 +191,10 @@ onMounted(() => {
       </section>
 
       <section class="admin-labs-view__panel admin-labs-view__panel--editor">
-        <div class="admin-labs-view__section-head">
-          <div>
-            <h2>{{ editorTitle }}</h2>
-            <p>{{ formMode === 'update' ? 'Update an existing lab.' : 'Register a new lab.' }}</p>
-          </div>
-        </div>
+        <SectionHeader
+          :title="editorTitle"
+          :subtitle="formMode === 'update' ? 'Update an existing lab.' : 'Register a new lab.'"
+        />
 
         <div class="admin-labs-view__controls">
           <label class="field">
@@ -209,6 +221,7 @@ onMounted(() => {
           <span>Manifest</span>
           <textarea
             v-model="manifestBody"
+            class="admin-labs-view__editor"
             spellcheck="false"
             placeholder="[lab]"
             rows="18"
@@ -241,31 +254,20 @@ onMounted(() => {
   gap: 20px;
 }
 
-.admin-labs-view__header {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.admin-labs-view__header h1,
-.admin-labs-view__header p {
+.admin-labs-view__token {
   margin: 0;
-}
-
-.admin-labs-view__header h1 {
-  font-family: var(--font-mono);
-  font-size: 1.7rem;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-}
-
-.admin-labs-view__header p {
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.admin-labs-view__token span {
+  color: var(--text-secondary);
+  text-transform: none;
+  letter-spacing: 0.02em;
 }
 
 .admin-labs-view__layout {
@@ -275,7 +277,8 @@ onMounted(() => {
 }
 
 .admin-labs-view__panel {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 18px;
   padding: 24px;
   border: 1px solid var(--border-default);
@@ -283,29 +286,8 @@ onMounted(() => {
   background: var(--bg-surface);
 }
 
-.admin-labs-view__section-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: start;
-}
-
-.admin-labs-view__section-head h2,
-.admin-labs-view__section-head p,
 .admin-labs-view__feedback {
   margin: 0;
-}
-
-.admin-labs-view__section-head h2 {
-  font-size: 1.1rem;
-}
-
-.admin-labs-view__section-head p {
-  margin-top: 6px;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  letter-spacing: 0.06em;
 }
 
 .admin-labs-view__status {
@@ -313,69 +295,99 @@ onMounted(() => {
   color: var(--muted);
 }
 
-.admin-labs-view__grid {
+.admin-labs-view__rows {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
-.admin-labs-view__card {
+.admin-labs-view__row {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 18px;
+  gap: 14px;
+  padding: 14px 14px 14px 16px;
   border: 1px solid var(--border-default);
   border-radius: 10px;
   background: var(--bg-elevated);
   transition: border-color 150ms ease;
 }
 
-.admin-labs-view__card:hover {
+.admin-labs-view__row:hover {
   border-color: var(--border-strong);
 }
 
-.admin-labs-view__card-copy {
+.admin-labs-view__row-main {
+  min-width: 0;
   display: grid;
-  gap: 6px;
+  gap: 4px;
+  flex: 1;
 }
 
-.admin-labs-view__card-head {
+.admin-labs-view__row-title {
   display: flex;
-  align-items: start;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: flex-start;
   gap: 12px;
+  min-width: 0;
 }
 
-.admin-labs-view__card-copy h3,
-.admin-labs-view__card-copy p {
+.admin-labs-view__row-name {
   margin: 0;
+  font-size: 0.98rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.admin-labs-view__card-copy h3 {
-  font-size: 1rem;
-}
-
-.admin-labs-view__card-copy p {
+.admin-labs-view__row-id {
+  margin: 0;
   color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 0.72rem;
 }
 
-.admin-labs-view__card-meta {
-  color: var(--text-tertiary);
+.admin-labs-view__row-meta {
+  flex: 0 0 auto;
+  min-width: 120px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.admin-labs-view__row-metrics {
+  margin: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
-.admin-labs-view__card-actions {
+.admin-labs-view__row-metrics--muted {
+  color: var(--text-tertiary);
+}
+
+.admin-labs-view__row-actions {
   display: flex;
   gap: 10px;
-  align-items: start;
+  align-items: center;
+  flex: 0 0 auto;
 }
 
 .admin-labs-view__controls {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.admin-labs-view__editor {
+  width: 100%;
+  flex: 1;
+  min-height: 360px;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.5;
 }
 
 .admin-labs-view__feedback--error {
@@ -402,9 +414,14 @@ onMounted(() => {
 }
 
 @media (max-width: 767px) {
-  .admin-labs-view__header {
+  .admin-labs-view__row {
+    align-items: flex-start;
     flex-direction: column;
-    align-items: start;
+  }
+
+  .admin-labs-view__row-meta {
+    justify-content: flex-start;
+    min-width: 0;
   }
 }
 </style>

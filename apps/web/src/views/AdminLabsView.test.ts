@@ -99,7 +99,7 @@ describe('AdminLabsView', () => {
     await flush();
 
     expect(document.body.textContent).not.toContain('注册、更新并维护当前实验。');
-    const link = document.querySelector('.admin-labs-view__card-actions a');
+    const link = document.querySelector('.admin-labs-view__row-actions a');
     expect(link?.getAttribute('href')).toBe('/admin/labs/sorting/queue');
     expect(window.location.search).toBe('');
     expect(window.sessionStorage.getItem('labkit_admin_token')).toBe('secret');
