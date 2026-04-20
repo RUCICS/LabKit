@@ -84,10 +84,10 @@ type historyItemResponse struct {
 }
 
 type profileResponse struct {
-	LabID    string `json:"lab_id"`
+	LabID    string `json:"lab_id,omitempty"`
 	Nickname string `json:"nickname"`
 	Track    string `json:"track,omitempty"`
-	Pick     bool   `json:"pick"`
+	Pick     bool   `json:"pick,omitempty"`
 }
 
 type submissionResponse struct {
@@ -528,10 +528,6 @@ func runHistory(ctx context.Context, deps *Dependencies, submissionID string) er
 }
 
 func runNick(ctx context.Context, deps *Dependencies, nickname string) error {
-	labID, err := activeLabID(deps)
-	if err != nil {
-		return err
-	}
 	cfg, err := resolveConfig(deps)
 	if err != nil {
 		return err
@@ -551,24 +547,17 @@ func runNick(ctx context.Context, deps *Dependencies, nickname string) error {
 	if err != nil {
 		return err
 	}
-	var (
-		lab     labResponse
-		profile profileResponse
-	)
+	var profile profileResponse
 	if err := withLineSpinner(deps, "Updating nickname…", func() error {
 		var updateErr error
-		lab, updateErr = client.getLab(ctx, labID)
-		if updateErr != nil {
-			return updateErr
-		}
-		profile, updateErr = client.updateNickname(ctx, labID, nickname, cfg, privateKey)
+		profile, updateErr = client.updateProfileNickname(ctx, nickname, cfg, privateKey)
 		return updateErr
 	}); err != nil {
 		return err
 	}
 	theme := ui.DefaultTheme()
 	fmt.Fprintln(deps.Out, theme.SuccessStyle.Render("✓")+" "+theme.TitleStyle.Render("Nickname updated")+"  "+
-		theme.MutedStyle.Render(labTitleSuffix(lab.Manifest, labID))+"  "+theme.ValueStyle.Render(profile.Nickname))
+		theme.ValueStyle.Render(profile.Nickname))
 	return nil
 }
 
@@ -731,8 +720,8 @@ func (c *apiClient) getHistory(ctx context.Context, labID string, cfg config.Con
 	return result, nil
 }
 
-func (c *apiClient) updateNickname(ctx context.Context, labID, nickname string, cfg config.Config, private ed25519.PrivateKey) (profileResponse, error) {
-	req, err := c.signedRequest(ctx, http.MethodPut, "/api/labs/"+labID+"/nickname", map[string]string{"nickname": nickname}, cfg, private)
+func (c *apiClient) updateProfileNickname(ctx context.Context, nickname string, cfg config.Config, private ed25519.PrivateKey) (profileResponse, error) {
+	req, err := c.signedRequest(ctx, http.MethodPut, "/api/profile", map[string]string{"nickname": nickname}, cfg, private)
 	if err != nil {
 		return profileResponse{}, err
 	}

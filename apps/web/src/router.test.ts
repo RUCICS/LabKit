@@ -34,13 +34,23 @@ describe('router', () => {
     expect(router.currentRoute.value.params.labID).toBe('sorting');
   });
 
-  it('redirects the legacy /profile path to /devices', async () => {
+  it('redirects the legacy /devices path to /profile', async () => {
+    const router = createAppRouter(createMemoryHistory());
+
+    await router.push('/devices');
+    await router.isReady();
+
+    expect(router.currentRoute.value.name).toBe('profile');
+    expect(router.currentRoute.value.path).toBe('/profile');
+  });
+
+  it('routes /profile to the profile screen', async () => {
     const router = createAppRouter(createMemoryHistory());
 
     await router.push('/profile');
     await router.isReady();
 
-    expect(router.currentRoute.value.name).toBe('devices');
-    expect(router.currentRoute.value.path).toBe('/devices');
+    expect(router.currentRoute.value.name).toBe('profile');
+    expect(router.currentRoute.value.path).toBe('/profile');
   });
 });

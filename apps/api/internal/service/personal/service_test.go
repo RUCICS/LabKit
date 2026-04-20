@@ -12,6 +12,97 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+func TestGetProfileReturnsNicknameKeysAndRecentActivity(t *testing.T) {
+	now := time.Date(2026, 4, 9, 12, 0, 0, 0, time.UTC)
+	repo := &profileTestRepo{
+		user: sqlc.Users{
+			ID:        7,
+			StudentID: "s123",
+			Nickname:  "Aki",
+			CreatedAt: pgtype.Timestamptz{Time: now.Add(-24 * time.Hour), Valid: true},
+		},
+		keys: []sqlc.UserKeys{
+			{
+				ID:         11,
+				UserID:     7,
+				PublicKey:  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMockKey device",
+				DeviceName: "Laptop",
+				CreatedAt:  pgtype.Timestamptz{Time: now.Add(-2 * time.Hour), Valid: true},
+			},
+		},
+		recent: []sqlc.Submissions{
+			{
+				ID:        uuid.MustParse("11111111-1111-7111-8111-111111111111"),
+				UserID:    7,
+				LabID:     "sorting",
+				Status:    "done",
+				CreatedAt: pgtype.Timestamptz{Time: now.Add(-30 * time.Minute), Valid: true},
+			},
+			{
+				ID:        uuid.MustParse("22222222-2222-7222-8222-222222222222"),
+				UserID:    7,
+				LabID:     "graphs",
+				Status:    "queued",
+				CreatedAt: pgtype.Timestamptz{Time: now.Add(-90 * time.Minute), Valid: true},
+			},
+		},
+	}
+
+	svc := NewService(repo)
+	svc.SetNow(func() time.Time { return now })
+
+	got, err := svc.GetProfile(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("GetProfile() error = %v", err)
+	}
+	if got.UserID != 7 {
+		t.Fatalf("UserID = %d, want %d", got.UserID, 7)
+	}
+	if got.StudentID != "s123" {
+		t.Fatalf("StudentID = %q, want %q", got.StudentID, "s123")
+	}
+	if got.Nickname != "Aki" {
+		t.Fatalf("Nickname = %q, want %q", got.Nickname, "Aki")
+	}
+	if len(got.Keys) != 1 || got.Keys[0].ID != 11 || got.Keys[0].DeviceName != "Laptop" {
+		t.Fatalf("Keys = %#v, want one key with id=11 deviceName=Laptop", got.Keys)
+	}
+	if len(got.RecentActivity) != 2 || got.RecentActivity[0].LabID == "" || got.RecentActivity[0].ID == uuid.Nil {
+		t.Fatalf("RecentActivity = %#v, want two recent submissions", got.RecentActivity)
+	}
+	if len(got.RecentLabs) != 2 {
+		t.Fatalf("RecentLabs = %#v, want 2", got.RecentLabs)
+	}
+	if got.RecentLabs[0] == got.RecentLabs[1] {
+		t.Fatalf("RecentLabs = %#v, want unique labs", got.RecentLabs)
+	}
+}
+
+func TestUpdateUserProfileUpdatesNicknameWithoutLabID(t *testing.T) {
+	now := time.Date(2026, 4, 9, 12, 0, 0, 0, time.UTC)
+	repo := &profileTestRepo{
+		user: sqlc.Users{
+			ID:        7,
+			StudentID: "s123",
+			Nickname:  "Old",
+			CreatedAt: pgtype.Timestamptz{Time: now.Add(-24 * time.Hour), Valid: true},
+		},
+		keys:   nil,
+		recent: nil,
+	}
+
+	svc := NewService(repo)
+	svc.SetNow(func() time.Time { return now })
+
+	_, err := svc.UpdateUserProfile(context.Background(), 7, "  New Nick  ")
+	if err != nil {
+		t.Fatalf("UpdateUserProfile() error = %v", err)
+	}
+	if repo.updatedNickname != "New Nick" {
+		t.Fatalf("updated nickname = %q, want %q", repo.updatedNickname, "New Nick")
+	}
+}
+
 func TestGetSubmissionDetailReturnsFinalStatusAndResult(t *testing.T) {
 	submissionID := uuid.MustParse("11111111-1111-7111-8111-111111111111")
 	finishedAt := time.Date(2026, 3, 31, 12, 10, 0, 0, time.UTC)
@@ -201,4 +292,82 @@ func (r *submissionDetailTestRepo) DeleteUserKey(context.Context, sqlc.DeleteUse
 	return nil
 }
 
+func (r *submissionDetailTestRepo) GetUserProfileByID(context.Context, int64) (sqlc.Users, error) {
+	return sqlc.Users{}, pgx.ErrNoRows
+}
+
+func (r *submissionDetailTestRepo) UpdateUserNickname(context.Context, sqlc.UpdateUserNicknameParams) (sqlc.Users, error) {
+	return sqlc.Users{}, pgx.ErrNoRows
+}
+
+func (r *submissionDetailTestRepo) ListRecentSubmissionsByUser(context.Context, sqlc.ListRecentSubmissionsByUserParams) ([]sqlc.Submissions, error) {
+	return nil, nil
+}
+
 var _ Repository = (*submissionDetailTestRepo)(nil)
+
+type profileTestRepo struct {
+	user            sqlc.Users
+	keys            []sqlc.UserKeys
+	recent          []sqlc.Submissions
+	updatedNickname string
+}
+
+func (r *profileTestRepo) GetLab(context.Context, string) (sqlc.Labs, error) {
+	return sqlc.Labs{}, pgx.ErrNoRows
+}
+
+func (r *profileTestRepo) ListSubmissionsByUserLab(context.Context, sqlc.ListSubmissionsByUserLabParams) ([]sqlc.Submissions, error) {
+	return nil, nil
+}
+
+func (r *profileTestRepo) GetSubmission(context.Context, uuid.UUID) (sqlc.Submissions, error) {
+	return sqlc.Submissions{}, pgx.ErrNoRows
+}
+
+func (r *profileTestRepo) ListScoresBySubmission(context.Context, uuid.UUID) ([]sqlc.Scores, error) {
+	return nil, nil
+}
+
+func (r *profileTestRepo) GetUserKeyByFingerprint(context.Context, string) (sqlc.UserKeys, error) {
+	return sqlc.UserKeys{}, pgx.ErrNoRows
+}
+
+func (r *profileTestRepo) ReserveNonce(context.Context, string) (bool, error) {
+	return true, nil
+}
+
+func (r *profileTestRepo) UpsertLabProfileNickname(context.Context, sqlc.UpsertLabProfileNicknameParams) (sqlc.LabProfiles, error) {
+	return sqlc.LabProfiles{}, pgx.ErrNoRows
+}
+
+func (r *profileTestRepo) UpsertLabProfileTrack(context.Context, sqlc.UpsertLabProfileTrackParams) (sqlc.LabProfiles, error) {
+	return sqlc.LabProfiles{}, pgx.ErrNoRows
+}
+
+func (r *profileTestRepo) ListUserKeys(context.Context, int64) ([]sqlc.UserKeys, error) {
+	return append([]sqlc.UserKeys(nil), r.keys...), nil
+}
+
+func (r *profileTestRepo) DeleteUserKey(context.Context, sqlc.DeleteUserKeyParams) error {
+	return nil
+}
+
+func (r *profileTestRepo) GetUserProfileByID(context.Context, int64) (sqlc.Users, error) {
+	if r.user.ID == 0 {
+		return sqlc.Users{}, pgx.ErrNoRows
+	}
+	return r.user, nil
+}
+
+func (r *profileTestRepo) UpdateUserNickname(_ context.Context, params sqlc.UpdateUserNicknameParams) (sqlc.Users, error) {
+	r.updatedNickname = params.Nickname
+	r.user.Nickname = params.Nickname
+	return r.user, nil
+}
+
+func (r *profileTestRepo) ListRecentSubmissionsByUser(context.Context, sqlc.ListRecentSubmissionsByUserParams) ([]sqlc.Submissions, error) {
+	return append([]sqlc.Submissions(nil), r.recent...), nil
+}
+
+var _ Repository = (*profileTestRepo)(nil)

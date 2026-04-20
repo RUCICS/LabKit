@@ -34,6 +34,9 @@ var (
 type Repository interface {
 	GetLab(context.Context, string) (sqlc.Labs, error)
 	ListSubmissionsByUserLab(context.Context, sqlc.ListSubmissionsByUserLabParams) ([]sqlc.Submissions, error)
+	GetUserProfileByID(context.Context, int64) (sqlc.Users, error)
+	UpdateUserNickname(context.Context, sqlc.UpdateUserNicknameParams) (sqlc.Users, error)
+	ListRecentSubmissionsByUser(context.Context, sqlc.ListRecentSubmissionsByUserParams) ([]sqlc.Submissions, error)
 	GetSubmission(context.Context, uuid.UUID) (sqlc.Submissions, error)
 	ListScoresBySubmission(context.Context, uuid.UUID) ([]sqlc.Scores, error)
 	GetUserKeyByFingerprint(context.Context, string) (sqlc.UserKeys, error)
@@ -108,6 +111,22 @@ type Key struct {
 	PublicKey  string    `json:"public_key"`
 	DeviceName string    `json:"device_name"`
 	CreatedAt  time.Time `json:"created_at"`
+}
+
+type RecentSubmission struct {
+	ID        uuid.UUID `json:"id"`
+	LabID     string    `json:"lab_id"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type UserProfile struct {
+	UserID         int64            `json:"user_id"`
+	StudentID      string           `json:"student_id"`
+	Nickname       string           `json:"nickname"`
+	Keys           []Key            `json:"keys"`
+	RecentActivity []RecentSubmission `json:"recent_activity,omitempty"`
+	RecentLabs     []string         `json:"recent_labs,omitempty"`
 }
 
 func NewService(repo Repository) *Service {
@@ -327,6 +346,68 @@ func (s *Service) RevokeKey(ctx context.Context, userID, keyID int64) error {
 		ID:     keyID,
 		UserID: userID,
 	})
+}
+
+func (s *Service) GetProfile(ctx context.Context, userID int64) (UserProfile, error) {
+	if s == nil || s.repo == nil {
+		return UserProfile{}, fmt.Errorf("personal service unavailable")
+	}
+	user, err := s.repo.GetUserProfileByID(ctx, userID)
+	if err != nil {
+		return UserProfile{}, err
+	}
+	keys, err := s.ListKeys(ctx, userID)
+	if err != nil {
+		return UserProfile{}, err
+	}
+	recentRows, err := s.repo.ListRecentSubmissionsByUser(ctx, sqlc.ListRecentSubmissionsByUserParams{
+		UserID: userID,
+		Limit:  20,
+	})
+	if err != nil {
+		return UserProfile{}, err
+	}
+	activity := make([]RecentSubmission, 0, len(recentRows))
+	recentLabs := make([]string, 0, 8)
+	seenLabs := make(map[string]bool, 8)
+	for _, row := range recentRows {
+		activity = append(activity, RecentSubmission{
+			ID:        row.ID,
+			LabID:     row.LabID,
+			Status:    row.Status,
+			CreatedAt: row.CreatedAt.Time,
+		})
+		if row.LabID != "" && !seenLabs[row.LabID] {
+			seenLabs[row.LabID] = true
+			recentLabs = append(recentLabs, row.LabID)
+		}
+	}
+	return UserProfile{
+		UserID:         user.ID,
+		StudentID:      user.StudentID,
+		Nickname:       user.Nickname,
+		Keys:           keys,
+		RecentActivity: activity,
+		RecentLabs:     recentLabs,
+	}, nil
+}
+
+func (s *Service) UpdateUserProfile(ctx context.Context, userID int64, nickname string) (UserProfile, error) {
+	if s == nil || s.repo == nil {
+		return UserProfile{}, fmt.Errorf("personal service unavailable")
+	}
+	name := strings.TrimSpace(nickname)
+	if name == "" {
+		return UserProfile{}, ErrInvalidNickname
+	}
+	_, err := s.repo.UpdateUserNickname(ctx, sqlc.UpdateUserNicknameParams{
+		ID:       userID,
+		Nickname: name,
+	})
+	if err != nil {
+		return UserProfile{}, err
+	}
+	return s.GetProfile(ctx, userID)
 }
 
 func historyItemFromSubmission(row sqlc.Submissions) HistoryItem {

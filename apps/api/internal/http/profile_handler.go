@@ -19,8 +19,56 @@ type updateNicknameRequest struct {
 	Nickname string `json:"nickname"`
 }
 
+type updateProfileRequest struct {
+	Nickname string `json:"nickname"`
+}
+
 type updateTrackRequest struct {
 	Track string `json:"track"`
+}
+
+func (h *ProfileHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.Service == nil {
+		middleware.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", http.StatusText(http.StatusInternalServerError))
+		return
+	}
+	user, ok := authenticateBrowserSessionOrPersonalRequest(w, r, h.Service, nil)
+	if !ok {
+		return
+	}
+	profile, err := h.Service.GetProfile(r.Context(), user.UserID)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, profile)
+}
+
+func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.Service == nil {
+		middleware.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", http.StatusText(http.StatusInternalServerError))
+		return
+	}
+	body, err := readRequestBody(r)
+	if err != nil {
+		middleware.WriteError(w, r, http.StatusBadRequest, "invalid_request", "invalid request body")
+		return
+	}
+	user, ok := authenticateBrowserSessionOrPersonalRequest(w, r, h.Service, body)
+	if !ok {
+		return
+	}
+	var req updateProfileRequest
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&req); err != nil {
+		middleware.WriteError(w, r, http.StatusBadRequest, "invalid_request", "invalid request body")
+		return
+	}
+	profile, err := h.Service.UpdateUserProfile(r.Context(), user.UserID, strings.TrimSpace(req.Nickname))
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, profile)
 }
 
 func (h *ProfileHandler) UpdateNickname(w http.ResponseWriter, r *http.Request) {

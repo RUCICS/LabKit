@@ -130,6 +130,8 @@ func NewRouter(options ...RouterOption) *Router {
 	mux.HandleFunc("POST /api/labs/{labID}/submissions", submissionsHandler.CreateSubmission)
 	mux.HandleFunc("GET /api/labs/{labID}/history", historyHandler.ListHistory)
 	mux.HandleFunc("GET /api/labs/{labID}/submissions/{submissionID}", historyHandler.GetSubmissionDetail)
+	mux.HandleFunc("GET /api/profile", profileHandler.GetProfile)
+	mux.HandleFunc("PUT /api/profile", profileHandler.UpdateProfile)
 	mux.HandleFunc("PUT /api/labs/{labID}/nickname", profileHandler.UpdateNickname)
 	mux.HandleFunc("PUT /api/labs/{labID}/track", profileHandler.UpdateTrack)
 	mux.HandleFunc("GET /api/keys", keysHandler.ListKeys)

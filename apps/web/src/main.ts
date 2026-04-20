@@ -24,26 +24,8 @@ const App = defineComponent({
       return typeof value === 'string' ? value : '';
     });
 
-    const routeMeta = computed(() => {
-      const route = router.currentRoute.value;
-      if (currentLabId.value) {
-        return currentLabId.value;
-      }
-      switch (route.name) {
-        case 'admin-labs':
-          return 'admin';
-        case 'devices':
-          return 'devices';
-        case 'auth-device':
-        case 'auth-confirm':
-          return 'auth';
-        default:
-          return 'catalog';
-      }
-    });
-
-    const showHistoryLink = computed(() => currentLabId.value !== '');
     const statusPhase = computed(() => (lab.value ? getLabPhase(lab.value.manifest?.schedule) : null));
+    const showAdmin = computed(() => Boolean(sessionStorage.getItem('labkit_admin_token')));
 
     async function loadLabContext(labId: string) {
       const requestId = ++requestSeq;
@@ -81,24 +63,20 @@ const App = defineComponent({
         !isAuthRoute.value
           ? h('header', { class: 'app-shell__header' }, [
               h('div', { class: 'app-shell__brand-lockup' }, [
-                h('span', { class: 'app-shell__brand-icon', 'aria-hidden': 'true' }, 'L'),
-                h('div', { class: 'app-shell__brand-copy' }, [
-                  h('span', { class: 'app-shell__brand' }, 'LabKit'),
-                  h('span', { class: 'app-shell__brand-divider', 'aria-hidden': 'true' }, '/'),
-                  h('span', { class: 'app-shell__brand-meta' }, routeMeta.value)
-                ])
+                h(
+                  RouterLink,
+                  { to: '/', class: 'app-shell__brand-link' },
+                  {
+                    default: () => [
+                      h('span', { class: 'app-shell__brand-icon', 'aria-hidden': 'true' }, 'L'),
+                      h('span', { class: 'app-shell__brand' }, 'LabKit')
+                    ]
+                  }
+                )
               ]),
-              h('nav', { class: 'app-shell__nav', 'aria-label': 'Primary', 'data-testid': 'app-shell-nav' }, [
-                h(RouterLink, { to: '/', class: 'app-shell__nav-link' }, { default: () => 'Labs' }),
-                showHistoryLink.value
-                  ? h(
-                      RouterLink,
-                      { to: `/labs/${currentLabId.value}/history`, class: 'app-shell__nav-link' },
-                      { default: () => 'History' }
-                    )
-                  : null,
-                h(RouterLink, { to: '/devices', class: 'app-shell__nav-link' }, { default: () => 'Devices' }),
-                h(RouterLink, { to: '/admin', class: 'app-shell__nav-link' }, { default: () => 'Admin' }),
+              h('nav', { class: 'app-shell__utility', 'aria-label': 'Utility' }, [
+                showAdmin.value ? h(RouterLink, { to: '/admin', class: 'app-shell__utility-link' }, { default: () => 'Admin' }) : null,
+                h(RouterLink, { to: '/profile', class: 'app-shell__utility-link' }, { default: () => 'Profile' }),
               ]),
               statusPhase.value
                 ? h(StatusBadge, {

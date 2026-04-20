@@ -16,6 +16,7 @@ import (
 	"labkit.local/apps/api/internal/http/middleware"
 	labsvc "labkit.local/apps/api/internal/service/labs"
 	boardsvc "labkit.local/apps/api/internal/service/leaderboard"
+	personal "labkit.local/apps/api/internal/service/personal"
 	"labkit.local/packages/go/db/sqlc"
 
 	"github.com/jackc/pgx/v5"
@@ -469,6 +470,22 @@ func assertStructuredErrorResponse(t *testing.T, rr *httptest.ResponseRecorder, 
 	}
 	if got := payload.Error.RequestID; got != headerRequestID {
 		t.Fatalf("error request_id = %q, want %q", got, headerRequestID)
+	}
+}
+
+func TestRouterRegistersProfileRoutes(t *testing.T) {
+	repo := newPersonalTestRepo(t, true)
+	svc := personal.NewService(repo)
+	handler := NewRouter(WithPersonalService(svc))
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/profile", nil)
+	repo.signRequest(t, req, "/api/profile", nil, "nonce-router-profile", 11)
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
 	}
 }
 

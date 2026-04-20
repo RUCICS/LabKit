@@ -35,6 +35,18 @@ func (r *repo) ListSubmissionsByUserLab(ctx context.Context, arg sqlc.ListSubmis
 	return r.store.ListSubmissionsByUserLab(ctx, arg)
 }
 
+func (r *repo) GetUserProfileByID(ctx context.Context, userID int64) (sqlc.Users, error) {
+	return r.store.GetUserProfileByID(ctx, userID)
+}
+
+func (r *repo) UpdateUserNickname(ctx context.Context, arg sqlc.UpdateUserNicknameParams) (sqlc.Users, error) {
+	return r.store.UpdateUserNickname(ctx, arg)
+}
+
+func (r *repo) ListRecentSubmissionsByUser(ctx context.Context, arg sqlc.ListRecentSubmissionsByUserParams) ([]sqlc.Submissions, error) {
+	return r.store.ListRecentSubmissionsByUser(ctx, arg)
+}
+
 func (r *repo) GetSubmission(ctx context.Context, id uuid.UUID) (sqlc.Submissions, error) {
 	return r.store.GetSubmission(ctx, id)
 }

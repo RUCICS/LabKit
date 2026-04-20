@@ -19,9 +19,8 @@ const loading = ref(true);
 const hidden = ref(false);
 const error = ref<string | null>(null);
 const activeMetric = ref('');
-const profileNickname = ref('');
 const profileTrack = ref('');
-const profileBusy = ref<'nickname' | 'track' | ''>('');
+const profileBusy = ref<'track' | ''>('');
 const profileNotice = ref('');
 const profileError = ref('');
 let requestSeq = 0;
@@ -129,7 +128,6 @@ async function loadBoard(metricId = metricIdFromLocation()) {
     lab.value = labResponse.ok ? ((await labResponse.json()) as LeaderboardLabDetail) : null;
     activeMetric.value = board.value.selected_metric;
     if (currentUserRow.value) {
-      profileNickname.value = currentUserRow.value.nickname;
       profileTrack.value = currentUserRow.value.track ?? board.value.selected_metric;
     } else if (profileTrack.value === '') {
       profileTrack.value = board.value.selected_metric;
@@ -156,32 +154,6 @@ async function readBoardError(response: Response) {
     return payload.error ?? null;
   } catch {
     return null;
-  }
-}
-
-async function saveNickname() {
-  profileBusy.value = 'nickname';
-  profileError.value = '';
-  profileNotice.value = '';
-  try {
-    const response = await fetch(`/api/labs/${encodeURIComponent(props.labId)}/nickname`, {
-      method: 'PUT',
-      credentials: 'include',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ nickname: profileNickname.value.trim() })
-    });
-    if (!response.ok) {
-      throw new Error(await readAPIError(response, 'Failed to update nickname'));
-    }
-    profileNotice.value = 'Profile updated';
-    await loadBoard(activeMetric.value);
-  } catch (requestError) {
-    profileError.value =
-      requestError instanceof Error ? requestError.message : 'Failed to update nickname';
-  } finally {
-    profileBusy.value = '';
   }
 }
 
@@ -266,22 +238,11 @@ onMounted(() => {
         >
           <div class="leaderboard-view__profile-copy">
             <h2>My board profile</h2>
-            <p>Control how your row appears on this board.</p>
+            <p>
+              Nickname is managed in
+              <a class="leaderboard-view__profile-link" href="/profile">Profile</a>.
+            </p>
           </div>
-          <form class="leaderboard-view__profile-form" @submit.prevent="saveNickname">
-            <label class="field field--stacked">
-              <span>Nickname</span>
-              <input
-                v-model="profileNickname"
-                name="nickname"
-                type="text"
-                placeholder="Ada"
-              />
-            </label>
-            <button type="submit" class="button" :disabled="profileBusy !== ''">
-              {{ profileBusy === 'nickname' ? 'Saving…' : 'Save nickname' }}
-            </button>
-          </form>
 
           <form
             v-if="canPickTrack"
@@ -435,6 +396,15 @@ onMounted(() => {
 .leaderboard-view__profile-copy p,
 .leaderboard-view__status {
   color: var(--text-secondary);
+}
+
+.leaderboard-view__profile-link {
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.leaderboard-view__profile-link:hover {
+  text-decoration: underline;
 }
 
 .leaderboard-view__notice {

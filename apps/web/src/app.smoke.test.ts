@@ -12,12 +12,10 @@ describe('app smoke', () => {
 
     const appShell = document.querySelector('[data-testid="app-shell"]');
     const shell = document.querySelector('[data-testid="page-shell"]');
-    const nav = document.querySelector('[data-testid="app-shell-nav"]');
 
     expect(appShell).not.toBeNull();
     expect(shell).not.toBeNull();
-    expect(nav).not.toBeNull();
     expect(appShell?.textContent).toContain('LabKit');
-    expect(appShell?.textContent).toContain('Devices');
+    expect(appShell?.textContent).toContain('Profile');
   });
 });

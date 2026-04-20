@@ -265,6 +265,14 @@ func (submitPrecheckPersonalService) Authenticate(context.Context, personal.Auth
 	return personal.AuthenticatedUser{UserID: 7, KeyID: 11}, nil
 }
 
+func (submitPrecheckPersonalService) GetProfile(context.Context, int64) (personal.UserProfile, error) {
+	return personal.UserProfile{}, nil
+}
+
+func (submitPrecheckPersonalService) UpdateUserProfile(context.Context, int64, string) (personal.UserProfile, error) {
+	return personal.UserProfile{}, nil
+}
+
 func (submitPrecheckPersonalService) ListSubmissionHistory(context.Context, int64, string) (personal.HistoryResponse, error) {
 	return personal.HistoryResponse{}, nil
 }

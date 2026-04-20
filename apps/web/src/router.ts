@@ -44,13 +44,13 @@ export function createAppRouter(history = createWebHistory()) {
         component: AuthConfirmView
       },
       {
-        path: '/devices',
-        name: 'devices',
+        path: '/profile',
+        name: 'profile',
         component: ProfileView
       },
       {
-        path: '/profile',
-        redirect: '/devices'
+        path: '/devices',
+        redirect: '/profile'
       },
       {
         path: '/admin',

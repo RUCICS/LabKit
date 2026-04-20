@@ -134,6 +134,20 @@ a {
   z-index: 1;
 }
 
+.app-shell__brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-shell__brand-link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 3px;
+  border-radius: 10px;
+}
+
 .app-shell__brand-icon {
   display: inline-flex;
   align-items: center;
@@ -170,6 +184,34 @@ a {
   letter-spacing: 0.08em;
 }
 
+.app-shell__utility {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.app-shell__utility-link {
+  padding: 8px 0;
+  border-radius: 0;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: color 150ms ease;
+}
+
+.app-shell__utility-link:hover {
+  color: var(--text-primary);
+}
+
+.app-shell__utility-link.router-link-active {
+  color: var(--text-primary);
+}
+
 .app-shell__nav {
   position: absolute;
   left: 50%;
@@ -201,7 +243,7 @@ a {
 }
 
 .app-shell__status {
-  margin-left: auto;
+  margin-left: 0;
   position: relative;
   z-index: 1;
 }

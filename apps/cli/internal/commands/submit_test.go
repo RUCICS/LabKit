@@ -2104,25 +2104,10 @@ func TestNickCommandUpdatesNickname(t *testing.T) {
 	var captured updateCapture
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
-			writeLabManifest(t, w, manifest.Manifest{
-				Lab:    manifest.LabSection{ID: "sorting", Name: "Sorting"},
-				Submit: manifest.SubmitSection{Files: []string{"main.c"}},
-				Eval:   manifest.EvalSection{Image: "ghcr.io/labkit/sorting:1"},
-				Quota:  manifest.QuotaSection{Daily: 3},
-				Metrics: []manifest.MetricSection{
-					{ID: "throughput", Name: "Throughput", Sort: manifest.MetricSortDesc},
-				},
-				Board:    manifest.BoardSection{RankBy: "throughput"},
-				Schedule: manifest.ScheduleSection{Open: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Close: time.Date(2026, 4, 30, 0, 0, 0, 0, time.UTC)},
-			})
-		case r.Method == http.MethodPut && r.URL.Path == "/api/labs/sorting/nickname":
-			captured = captureJSONUpdateRequest(t, r, "/api/labs/sorting/nickname", priv.Public().(ed25519.PublicKey))
+		case r.Method == http.MethodPut && r.URL.Path == "/api/profile":
+			captured = captureJSONUpdateRequest(t, r, "/api/profile", priv.Public().(ed25519.PublicKey))
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"lab_id":   "sorting",
 				"nickname": "Cat",
-				"track":    "throughput",
-				"pick":     true,
 			})
 		default:
 			http.NotFound(w, r)
@@ -2148,14 +2133,14 @@ func TestNickCommandUpdatesNickname(t *testing.T) {
 	if captured.method != http.MethodPut {
 		t.Fatalf("method = %q, want PUT", captured.method)
 	}
-	if captured.path != "/api/labs/sorting/nickname" {
-		t.Fatalf("path = %q, want nickname path", captured.path)
+	if captured.path != "/api/profile" {
+		t.Fatalf("path = %q, want profile path", captured.path)
 	}
 	if captured.body["nickname"] != "Cat" {
 		t.Fatalf("nickname body = %#v, want Cat", captured.body["nickname"])
 	}
 	plain := stripANSIForTest(stdout.String())
-	for _, want := range []string{"Updating nickname…", "Nickname updated", "Sorting", "Cat"} {
+	for _, want := range []string{"Updating nickname…", "Nickname updated", "Cat"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("stdout = %q, want %q", plain, want)
 		}

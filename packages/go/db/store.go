@@ -24,6 +24,10 @@ func New(db sqlc.DBTX) *Store {
 	return &Store{Queries: sqlc.New(db)}
 }
 
+func (s *Store) GetUserProfileByID(ctx context.Context, userID int64) (sqlc.Users, error) {
+	return s.GetUserByID(ctx, userID)
+}
+
 // WithTx runs fn within the supplied transaction and commits or rolls back.
 func WithTx(ctx context.Context, tx Tx, fn func(*Store) error) error {
 	defer func() {

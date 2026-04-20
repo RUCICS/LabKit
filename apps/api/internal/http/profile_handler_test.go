@@ -245,6 +245,59 @@ func TestProfileHandlerUpdatesNickname(t *testing.T) {
 	}
 }
 
+func TestProfileHandlerReturnsProfile(t *testing.T) {
+	repo := newPersonalTestRepo(t, true)
+	svc := personal.NewService(repo)
+	handler := &ProfileHandler{Service: svc}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/profile", nil)
+	repo.signRequest(t, req, "/api/profile", nil, "nonce-profile-get", 11)
+
+	handler.GetProfile(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	var payload personal.UserProfile
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if payload.UserID != 7 {
+		t.Fatalf("user id = %d, want %d", payload.UserID, 7)
+	}
+	if payload.Nickname == "" {
+		t.Fatalf("nickname = %q, want non-empty", payload.Nickname)
+	}
+	if len(payload.Keys) == 0 {
+		t.Fatalf("keys = %#v, want at least one key", payload.Keys)
+	}
+}
+
+func TestProfileHandlerUpdatesProfileNickname(t *testing.T) {
+	repo := newPersonalTestRepo(t, true)
+	svc := personal.NewService(repo)
+	handler := &ProfileHandler{Service: svc}
+
+	body := []byte(`{"nickname":"New Nick"}`)
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPut, "/api/profile", bytes.NewReader(body))
+	repo.signRequest(t, req, "/api/profile", body, "nonce-profile-put", 11)
+
+	handler.UpdateProfile(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	var payload personal.UserProfile
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if payload.Nickname != "New Nick" {
+		t.Fatalf("nickname = %q, want %q", payload.Nickname, "New Nick")
+	}
+}
+
 func TestProfileHandlerRejectsTrackUpdateWhenPickDisabled(t *testing.T) {
 	repo := newPersonalTestRepo(t, false)
 	svc := personal.NewService(repo)
@@ -482,6 +535,7 @@ type personalTestRepo struct {
 	t         *testing.T
 	labs      map[string]sqlc.Labs
 	profiles  map[string]map[int64]sqlc.LabProfiles
+	users     map[int64]sqlc.Users
 	submits   map[uuid.UUID]sqlc.Submissions
 	scores    map[uuid.UUID][]sqlc.Scores
 	keys      map[int64]sqlc.UserKeys
@@ -538,6 +592,10 @@ func newPersonalTestRepo(t *testing.T, pick bool) *personalTestRepo {
 			"sorting": {
 				7: {UserID: 7, LabID: "sorting", Nickname: "Anonymous", Track: pgtype.Text{String: "throughput", Valid: true}},
 			},
+		},
+		users: map[int64]sqlc.Users{
+			7: {ID: 7, StudentID: "s123", Nickname: "Anonymous", CreatedAt: pgtype.Timestamptz{Time: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Valid: true}},
+			8: {ID: 8, StudentID: "s456", Nickname: "Other", CreatedAt: pgtype.Timestamptz{Time: time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC), Valid: true}},
 		},
 		submits: map[uuid.UUID]sqlc.Submissions{
 			submissionA: {
@@ -615,6 +673,41 @@ func (r *personalTestRepo) ListSubmissionsByUserLab(_ context.Context, arg sqlc.
 		return rows[i].CreatedAt.Time.After(rows[j].CreatedAt.Time)
 	})
 	return rows, nil
+}
+
+func (r *personalTestRepo) GetUserProfileByID(_ context.Context, userID int64) (sqlc.Users, error) {
+	row, ok := r.users[userID]
+	if !ok {
+		return sqlc.Users{}, pgx.ErrNoRows
+	}
+	return row, nil
+}
+
+func (r *personalTestRepo) UpdateUserNickname(_ context.Context, arg sqlc.UpdateUserNicknameParams) (sqlc.Users, error) {
+	row, ok := r.users[arg.ID]
+	if !ok {
+		return sqlc.Users{}, pgx.ErrNoRows
+	}
+	row.Nickname = arg.Nickname
+	r.users[arg.ID] = row
+	return row, nil
+}
+
+func (r *personalTestRepo) ListRecentSubmissionsByUser(_ context.Context, arg sqlc.ListRecentSubmissionsByUserParams) ([]sqlc.Submissions, error) {
+	rows := make([]sqlc.Submissions, 0)
+	for _, row := range r.submits {
+		if row.UserID == arg.UserID {
+			rows = append(rows, row)
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		return rows[i].CreatedAt.Time.After(rows[j].CreatedAt.Time)
+	})
+	limit := int(arg.Limit)
+	if limit <= 0 || limit >= len(rows) {
+		return rows, nil
+	}
+	return rows[:limit], nil
 }
 
 func (r *personalTestRepo) GetSubmission(_ context.Context, id uuid.UUID) (sqlc.Submissions, error) {

@@ -71,12 +71,14 @@ func (q *Queries) ListLeaderboardByLab(ctx context.Context, labID string) ([]Lea
 const listLeaderboardByLabAndMetricAsc = `-- name: ListLeaderboardByLabAndMetricAsc :many
 SELECT
     lb.user_id,
+    u.nickname,
     lb.lab_id,
     lb.submission_id,
     lb.updated_at,
     s.metric_id,
     s.value
 FROM leaderboard lb
+JOIN users u ON u.id = lb.user_id
 JOIN scores s ON s.submission_id = lb.submission_id
 WHERE lb.lab_id = $1 AND s.metric_id = $2
 ORDER BY s.value ASC, lb.updated_at ASC
@@ -89,6 +91,7 @@ type ListLeaderboardByLabAndMetricAscParams struct {
 
 type ListLeaderboardByLabAndMetricAscRow struct {
 	UserID       int64              `json:"user_id"`
+	Nickname     string             `json:"nickname"`
 	LabID        string             `json:"lab_id"`
 	SubmissionID uuid.UUID          `json:"submission_id"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
@@ -107,6 +110,7 @@ func (q *Queries) ListLeaderboardByLabAndMetricAsc(ctx context.Context, arg List
 		var i ListLeaderboardByLabAndMetricAscRow
 		if err := rows.Scan(
 			&i.UserID,
+			&i.Nickname,
 			&i.LabID,
 			&i.SubmissionID,
 			&i.UpdatedAt,
@@ -126,12 +130,14 @@ func (q *Queries) ListLeaderboardByLabAndMetricAsc(ctx context.Context, arg List
 const listLeaderboardByLabAndMetricDesc = `-- name: ListLeaderboardByLabAndMetricDesc :many
 SELECT
     lb.user_id,
+    u.nickname,
     lb.lab_id,
     lb.submission_id,
     lb.updated_at,
     s.metric_id,
     s.value
 FROM leaderboard lb
+JOIN users u ON u.id = lb.user_id
 JOIN scores s ON s.submission_id = lb.submission_id
 WHERE lb.lab_id = $1 AND s.metric_id = $2
 ORDER BY s.value DESC, lb.updated_at DESC
@@ -144,6 +150,7 @@ type ListLeaderboardByLabAndMetricDescParams struct {
 
 type ListLeaderboardByLabAndMetricDescRow struct {
 	UserID       int64              `json:"user_id"`
+	Nickname     string             `json:"nickname"`
 	LabID        string             `json:"lab_id"`
 	SubmissionID uuid.UUID          `json:"submission_id"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
@@ -162,6 +169,7 @@ func (q *Queries) ListLeaderboardByLabAndMetricDesc(ctx context.Context, arg Lis
 		var i ListLeaderboardByLabAndMetricDescRow
 		if err := rows.Scan(
 			&i.UserID,
+			&i.Nickname,
 			&i.LabID,
 			&i.SubmissionID,
 			&i.UpdatedAt,

@@ -14,6 +14,8 @@ import (
 
 type PersonalService interface {
 	Authenticate(context.Context, personal.AuthInput) (personal.AuthenticatedUser, error)
+	GetProfile(context.Context, int64) (personal.UserProfile, error)
+	UpdateUserProfile(context.Context, int64, string) (personal.UserProfile, error)
 	ListSubmissionHistory(context.Context, int64, string) (personal.HistoryResponse, error)
 	GetSubmissionDetail(context.Context, int64, string, uuid.UUID) (personal.SubmissionDetail, error)
 	UpdateNickname(context.Context, int64, string, string) (personal.Profile, error)

@@ -125,8 +125,8 @@ func (s *Service) GetBoard(ctx context.Context, labID, by string, viewerUserID i
 		rowScores := scoresForMetrics(parsed.Metrics, scoreRows)
 		selectedValue := metricValueFor(rowScores, selectedMetric.ID)
 		nickname := "匿名"
-		if profile, ok := profileByUser[row.userID]; ok && strings.TrimSpace(profile.Nickname) != "" {
-			nickname = strings.TrimSpace(profile.Nickname)
+		if strings.TrimSpace(row.nickname) != "" {
+			nickname = strings.TrimSpace(row.nickname)
 		}
 		boardRow := BoardRow{
 			Nickname:    nickname,
@@ -255,6 +255,7 @@ func (s *Service) listLeaderboardRows(ctx context.Context, labID string, metric 
 		for _, row := range rows {
 			out = append(out, leaderboardRow{
 				userID:       row.UserID,
+				nickname:     row.Nickname,
 				submissionID: row.SubmissionID,
 				updatedAt:    row.UpdatedAt.Time.UTC(),
 			})
@@ -272,6 +273,7 @@ func (s *Service) listLeaderboardRows(ctx context.Context, labID string, metric 
 		for _, row := range rows {
 			out = append(out, leaderboardRow{
 				userID:       row.UserID,
+				nickname:     row.Nickname,
 				submissionID: row.SubmissionID,
 				updatedAt:    row.UpdatedAt.Time.UTC(),
 			})
@@ -301,6 +303,7 @@ func (s *Service) listScoresByLab(ctx context.Context, labID string) (map[uuid.U
 
 type leaderboardRow struct {
 	userID       int64
+	nickname     string
 	submissionID uuid.UUID
 	updatedAt    time.Time
 }

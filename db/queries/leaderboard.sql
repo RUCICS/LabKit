@@ -21,12 +21,14 @@ ORDER BY updated_at DESC;
 -- name: ListLeaderboardByLabAndMetricAsc :many
 SELECT
     lb.user_id,
+    u.nickname,
     lb.lab_id,
     lb.submission_id,
     lb.updated_at,
     s.metric_id,
     s.value
 FROM leaderboard lb
+JOIN users u ON u.id = lb.user_id
 JOIN scores s ON s.submission_id = lb.submission_id
 WHERE lb.lab_id = $1 AND s.metric_id = $2
 ORDER BY s.value ASC, lb.updated_at ASC;
@@ -34,12 +36,14 @@ ORDER BY s.value ASC, lb.updated_at ASC;
 -- name: ListLeaderboardByLabAndMetricDesc :many
 SELECT
     lb.user_id,
+    u.nickname,
     lb.lab_id,
     lb.submission_id,
     lb.updated_at,
     s.metric_id,
     s.value
 FROM leaderboard lb
+JOIN users u ON u.id = lb.user_id
 JOIN scores s ON s.submission_id = lb.submission_id
 WHERE lb.lab_id = $1 AND s.metric_id = $2
 ORDER BY s.value DESC, lb.updated_at DESC;

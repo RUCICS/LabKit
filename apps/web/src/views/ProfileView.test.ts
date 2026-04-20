@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApp, defineComponent, h, nextTick, ref } from 'vue';
+import { createMemoryHistory, createRouter } from 'vue-router';
 import AuthConfirmView from './AuthConfirmView.vue';
 import AdminQueueView from './AdminQueueView.vue';
 import ProfileView from './ProfileView.vue';
@@ -15,6 +16,31 @@ async function mountView(component: any, url = '/') {
   document.body.appendChild(el);
   window.history.pushState({}, '', url);
   const app = createApp(component);
+  app.mount(el);
+  await flush();
+  return {
+    unmount() {
+      app.unmount();
+      el.remove();
+    }
+  };
+}
+
+async function mountProfileView(url = '/profile') {
+  const el = document.createElement('div');
+  document.body.appendChild(el);
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/profile', component: ProfileView },
+      { path: '/labs/:labID/board', component: { render: () => null } },
+      { path: '/labs/:labID/history', component: { render: () => null } }
+    ]
+  });
+  const app = createApp(defineComponent({ render: () => h('div', [h(ProfileView)]) }));
+  app.use(router);
+  await router.push(url);
+  await router.isReady();
   app.mount(el);
   await flush();
   return {
@@ -102,42 +128,75 @@ describe('AuthConfirmView', () => {
 });
 
 describe('ProfileView', () => {
-  it('renders the user key list', async () => {
-    const fetchMock = vi.fn(async () =>
-      jsonResponse({
-        keys: [
-          {
-            id: 11,
-            public_key: 'ssh-ed25519 AAAA',
-            device_name: 'Laptop',
-            created_at: '2026-03-31T10:00:00Z'
-          },
-          {
-            id: 12,
-            public_key: 'ssh-ed25519 BBBB',
-            device_name: 'Phone',
-            created_at: '2026-03-31T11:00:00Z'
-          }
-        ]
-      })
-    );
+  it('loads /api/profile and renders identity, devices, and activity', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/profile' && (!init || init.method === undefined || init.method === 'GET')) {
+        return jsonResponse({
+          user_id: 7,
+          student_id: 's123',
+          nickname: 'Aki',
+          recent_activity: [
+            {
+              id: '11111111-1111-7111-8111-111111111111',
+              lab_id: 'sorting',
+              status: 'done',
+              created_at: '2026-03-31T12:00:00Z'
+            }
+          ]
+        });
+      }
+      if (url === '/api/keys') {
+        return jsonResponse({
+          keys: [
+            {
+              id: 11,
+              public_key: 'ssh-ed25519 AAAA',
+              device_name: 'Laptop',
+              created_at: '2026-03-31T10:00:00Z'
+            },
+            {
+              id: 12,
+              public_key: 'ssh-ed25519 BBBB',
+              device_name: 'Phone',
+              created_at: '2026-03-31T11:00:00Z'
+            }
+          ]
+        });
+      }
+      return jsonResponse({ error: { message: 'not found' } }, 404);
+    });
     vi.stubGlobal('fetch', fetchMock);
 
-    const view = await mountView(ProfileView, '/profile');
+    const view = await mountProfileView('/profile');
 
+    expect(document.body.textContent).toContain('Identity');
     expect(document.body.textContent).toContain('Devices');
     expect(document.body.textContent).toContain('Laptop');
     expect(document.body.textContent).toContain('Phone');
+    expect(document.body.textContent).toContain('Activity');
+    expect(document.body.textContent).toContain('sorting');
     expect(document.body.textContent).not.toContain('已绑定设备与密钥指纹。');
+    expect(fetchMock).toHaveBeenCalledWith('/api/profile', expect.objectContaining({ credentials: 'include' }));
     expect(fetchMock).toHaveBeenCalledWith('/api/keys', expect.objectContaining({ credentials: 'include' }));
 
     view.unmount();
   });
 
   it('renders an empty state when no keys exist', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ keys: [] })));
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === '/api/profile') {
+        return jsonResponse({ user_id: 7, student_id: 's123', nickname: 'Aki', recent_activity: [] });
+      }
+      if (url === '/api/keys') {
+        return jsonResponse({ keys: [] });
+      }
+      return jsonResponse({ error: { message: 'not found' } }, 404);
+    });
+    vi.stubGlobal('fetch', fetchMock);
 
-    const view = await mountView(ProfileView, '/profile');
+    const view = await mountProfileView('/profile');
 
     expect(document.body.textContent).toContain('No keys are registered yet.');
 

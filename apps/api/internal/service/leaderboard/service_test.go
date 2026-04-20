@@ -7,6 +7,7 @@ import (
 	"sort"
 	"testing"
 	"time"
+	"strings"
 
 	"labkit.local/packages/go/db/sqlc"
 	"labkit.local/packages/go/manifest"
@@ -382,17 +383,17 @@ close = 2026-04-30T00:00:00Z
 		},
 		profiles: map[string][]sqlc.LabProfiles{
 			"sorting": {
-				{UserID: 1, LabID: "sorting", Nickname: "Ada"},
-				{UserID: 2, LabID: "sorting", Nickname: "Bob"},
-				{UserID: 3, LabID: "sorting", Nickname: "Cara"},
+				{UserID: 1, LabID: "sorting", Nickname: "Ada (lab)"},
+				{UserID: 2, LabID: "sorting", Nickname: "Bob (lab)"},
+				{UserID: 3, LabID: "sorting", Nickname: "Cara (lab)"},
 			},
 			"picksort": {
-				{UserID: 4, LabID: "picksort", Nickname: "Ada", Track: text("throughput")},
-				{UserID: 5, LabID: "picksort", Nickname: "Bob", Track: text("latency")},
+				{UserID: 4, LabID: "picksort", Nickname: "Ada (lab)", Track: text("throughput")},
+				{UserID: 5, LabID: "picksort", Nickname: "Bob (lab)", Track: text("latency")},
 			},
 			"tiecase": {
-				{UserID: 7, LabID: "tiecase", Nickname: "Beta"},
-				{UserID: 6, LabID: "tiecase", Nickname: "Alpha"},
+				{UserID: 7, LabID: "tiecase", Nickname: "Beta (lab)"},
+				{UserID: 6, LabID: "tiecase", Nickname: "Alpha (lab)"},
 			},
 		},
 		quotaUsage: 1,
@@ -425,6 +426,7 @@ func (r *fakeRepository) ListLeaderboardByLabAndMetricDesc(_ context.Context, ar
 	for _, item := range items {
 		out = append(out, sqlc.ListLeaderboardByLabAndMetricDescRow{
 			UserID:       item.UserID,
+			Nickname:     item.Nickname,
 			LabID:        item.LabID,
 			SubmissionID: item.SubmissionID,
 			UpdatedAt:    item.UpdatedAt,
@@ -489,8 +491,16 @@ func (r *fakeRepository) boardRowsForMetric(labID, metricID string, desc bool) [
 	items := make([]sqlc.ListLeaderboardByLabAndMetricAscRow, 0, len(rows))
 	for _, row := range rows {
 		score := scoreForMetric(r.scores[row.SubmissionID], metricID)
+		nickname := ""
+		for _, profile := range r.profiles[labID] {
+			if profile.UserID == row.UserID {
+				nickname = strings.TrimSuffix(profile.Nickname, " (lab)")
+				break
+			}
+		}
 		items = append(items, sqlc.ListLeaderboardByLabAndMetricAscRow{
 			UserID:       row.UserID,
+			Nickname:     nickname,
 			LabID:        row.LabID,
 			SubmissionID: row.SubmissionID,
 			UpdatedAt:    row.UpdatedAt,

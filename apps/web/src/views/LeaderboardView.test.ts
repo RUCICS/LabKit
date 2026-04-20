@@ -488,7 +488,7 @@ describe('LeaderboardView', () => {
     view.unmount();
   });
 
-  it('renders viewer quota and saves nickname and track updates', async () => {
+  it('renders viewer quota and saves track updates', async () => {
     const fetchSpy = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes('/api/labs/sorting/board')) {
@@ -514,9 +514,6 @@ describe('LeaderboardView', () => {
       if (url.endsWith('/api/labs/sorting') && (!init || !init.method)) {
         return makeLabResponse(labPayload);
       }
-      if (url.endsWith('/api/labs/sorting/nickname')) {
-        return makeResponse({ lab_id: 'sorting', nickname: 'Bobby', track: 'latency', pick: true });
-      }
       if (url.endsWith('/api/labs/sorting/track')) {
         return makeResponse({ lab_id: 'sorting', nickname: 'Bobby', track: 'runtime_ms', pick: true });
       }
@@ -528,18 +525,7 @@ describe('LeaderboardView', () => {
 
     expect(document.body.textContent).toContain('2 left today');
     expect(document.body.textContent).toContain('My board profile');
-
-    const nicknameInput = document.querySelector('input[name="nickname"]') as HTMLInputElement | null;
-    expect(nicknameInput).not.toBeNull();
-    nicknameInput!.value = 'Bobby';
-    nicknameInput!.dispatchEvent(new Event('input', { bubbles: true }));
-
-    const saveNickname = Array.from(document.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('Save nickname')
-    ) as HTMLButtonElement | undefined;
-    expect(saveNickname).toBeDefined();
-    saveNickname!.click();
-    await waitForBodyText('My board profile');
+    expect(document.querySelector('input[name="nickname"]')).toBeNull();
 
     const trackSelect = document.querySelector('select[name="track"]') as HTMLSelectElement | null;
     expect(trackSelect).not.toBeNull();
@@ -553,10 +539,6 @@ describe('LeaderboardView', () => {
     saveTrack!.click();
     await waitForBodyText('Profile updated');
 
-    expect(fetchSpy).toHaveBeenCalledWith(
-      '/api/labs/sorting/nickname',
-      expect.objectContaining({ method: 'PUT', credentials: 'include' })
-    );
     expect(fetchSpy).toHaveBeenCalledWith(
       '/api/labs/sorting/track',
       expect.objectContaining({ method: 'PUT', credentials: 'include' })
