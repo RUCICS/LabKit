@@ -254,13 +254,30 @@ async function mountBoard(labId = 'sorting') {
   };
 }
 
+function stubIntersectionObserver() {
+  const instances: Array<{ callback: IntersectionObserverCallback }> = [];
+  const spy = vi.fn((callback: IntersectionObserverCallback) => {
+    instances.push({ callback });
+    return {
+      observe: vi.fn(),
+      unobserve: vi.fn(),
+      disconnect: vi.fn()
+    } satisfies Partial<IntersectionObserver> as IntersectionObserver;
+  });
+  vi.stubGlobal('IntersectionObserver', spy);
+  return { instances, spy };
+}
+
 beforeEach(() => {
   document.body.innerHTML = '';
   window.history.pushState({}, '', '/');
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date('2026-05-01T00:00:00Z'));
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe('LeaderboardView', () => {
@@ -280,8 +297,11 @@ describe('LeaderboardView', () => {
     const view = await mountBoard();
 
     expect(document.body.textContent).toContain('CoLab 调度器竞赛');
-    expect(document.body.textContent).toContain('Participants');
-    expect(document.body.textContent).toContain('2');
+    expect(document.body.textContent).toContain('REMAINING');
+    expect(document.body.textContent).toContain('31d');
+    expect(document.body.textContent).toContain('CLOSES');
+    expect(document.body.textContent).toContain('06/01');
+    expect(document.body.textContent).toContain('Participants 2');
     expect(document.body.textContent).toContain('Bob');
     expect(document.body.textContent).toContain('88');
     expect(document.body.textContent).toContain('35');
@@ -289,6 +309,53 @@ describe('LeaderboardView', () => {
     expect(document.body.textContent).toContain('Latency');
     expect(document.body.textContent).toContain('Last update');
     expect(document.body.textContent).toContain('GET /api/labs/sorting/board');
+
+    view.unmount();
+  });
+
+  it('makes the context bar sticky only after scrolling into the table', async () => {
+    const io = stubIntersectionObserver();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/api/labs/sorting/board')) {
+          return makeResponse(boardByMetric.runtime_ms);
+        }
+        return makeLabResponse(labPayload);
+      })
+    );
+
+    const view = await mountBoard();
+    expect(io.spy).toHaveBeenCalledTimes(1);
+
+    const context = document.querySelector('.leaderboard-view__context') as HTMLElement | null;
+    expect(context).not.toBeNull();
+    expect(context!.classList.contains('leaderboard-view__context--sticky')).toBe(false);
+
+    io.instances[0]?.callback(
+      [
+        {
+          isIntersecting: false,
+          boundingClientRect: { top: -1 } as DOMRectReadOnly
+        } as IntersectionObserverEntry
+      ],
+      {} as IntersectionObserver
+    );
+    await nextTick();
+    expect(context!.classList.contains('leaderboard-view__context--sticky')).toBe(true);
+
+    io.instances[0]?.callback(
+      [
+        {
+          isIntersecting: true,
+          boundingClientRect: { top: 0 } as DOMRectReadOnly
+        } as IntersectionObserverEntry
+      ],
+      {} as IntersectionObserver
+    );
+    await nextTick();
+    expect(context!.classList.contains('leaderboard-view__context--sticky')).toBe(false);
 
     view.unmount();
   });
@@ -500,22 +567,11 @@ describe('LeaderboardView', () => {
             left: 2,
             reset_hint: '00:00 Asia/Shanghai'
           },
-          rows: [
-            {
-              ...boardByMetric.runtime_ms.rows[0],
-              nickname: 'Bob',
-              track: 'latency',
-              current_user: true
-            },
-            boardByMetric.runtime_ms.rows[1]
-          ]
+          rows: boardByMetric.runtime_ms.rows
         });
       }
       if (url.endsWith('/api/labs/sorting') && (!init || !init.method)) {
         return makeLabResponse(labPayload);
-      }
-      if (url.endsWith('/api/labs/sorting/track')) {
-        return makeResponse({ lab_id: 'sorting', nickname: 'Bobby', track: 'runtime_ms', pick: true });
       }
       throw new Error(`unexpected fetch ${url}`);
     });
@@ -524,26 +580,7 @@ describe('LeaderboardView', () => {
     const view = await mountBoard();
 
     expect(document.body.textContent).toContain('2 left today');
-    expect(document.body.textContent).toContain('My board profile');
-    expect(document.querySelector('input[name="nickname"]')).toBeNull();
-
-    const trackSelect = document.querySelector('select[name="track"]') as HTMLSelectElement | null;
-    expect(trackSelect).not.toBeNull();
-    trackSelect!.value = 'runtime_ms';
-    trackSelect!.dispatchEvent(new Event('change', { bubbles: true }));
-
-    const saveTrack = Array.from(document.querySelectorAll('button')).find((button) =>
-      button.textContent?.includes('Save track')
-    ) as HTMLButtonElement | undefined;
-    expect(saveTrack).toBeDefined();
-    saveTrack!.click();
-    await waitForBodyText('Profile updated');
-
-    expect(fetchSpy).toHaveBeenCalledWith(
-      '/api/labs/sorting/track',
-      expect.objectContaining({ method: 'PUT', credentials: 'include' })
-    );
-    expect(document.body.textContent).toContain('Profile updated');
+    expect(document.body.textContent).toContain('My history');
 
     view.unmount();
   });
