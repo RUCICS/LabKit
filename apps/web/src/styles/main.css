@@ -532,6 +532,36 @@ a {
   line-height: 1.55;
 }
 
+/* ── Row link utilities (shared chrome primitives) ── */
+
+.lk-row-link {
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    border-color 150ms ease,
+    transform 150ms ease;
+}
+
+.lk-row-link:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.lk-row-link:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+.lk-row-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.lk-row-link[aria-disabled='true'] {
+  opacity: 0.55;
+  cursor: default;
+  pointer-events: none;
+}
+
 /* ── Responsive ── */
 
 @media (max-width: 767px) {
