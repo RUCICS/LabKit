@@ -32,6 +32,8 @@ const footerSummary = computed(() => {
   return parts.join(' · ');
 });
 
+const isTrackBased = computed(() => props.rows.some((row) => typeof row.track === 'string' && row.track.length > 0));
+
 function scoreForRow(row: LeaderboardRow, metricId: string) {
   return row.scores.find((score) => score.metric_id === metricId)?.value;
 }
@@ -83,6 +85,13 @@ function trackClass(track: string | undefined) {
   const index = Math.max(props.metrics.findIndex((m) => m.id === track), 0);
   return `board-table__track-indicator--${metricTone(index)}`;
 }
+
+function participatesInSelectedTrack(row: LeaderboardRow) {
+  if (!isTrackBased.value) {
+    return true;
+  }
+  return !!row.track && row.track === props.selectedMetricId;
+}
 </script>
 
 <template>
@@ -108,10 +117,15 @@ function trackClass(track: string | undefined) {
           v-for="row in rows"
           :key="`${row.rank}-${row.nickname}`"
           data-testid="leaderboard-row"
-          :class="{ 'board-table__row--current': row.current_user }"
+          :class="{
+            'board-table__row--current': row.current_user,
+            'board-table__row--unranked': !participatesInSelectedTrack(row)
+          }"
           :style="{ '--row-delay': `${Math.max(row.rank - 1, 0) * 30}ms` }"
         >
-          <td class="board-table__rank">{{ row.rank }}</td>
+          <td class="board-table__rank">
+            {{ participatesInSelectedTrack(row) ? row.rank : '—' }}
+          </td>
           <td class="board-table__nickname">
             <span
               v-if="row.track"
@@ -204,6 +218,14 @@ tbody tr:hover td {
 
 .board-table__row--current td:first-child {
   box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.board-table__row--unranked td {
+  opacity: 0.45;
+}
+
+.board-table__row--unranked:hover td {
+  opacity: 0.65;
 }
 
 .board-table__rank,

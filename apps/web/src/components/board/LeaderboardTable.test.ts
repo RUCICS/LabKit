@@ -70,6 +70,62 @@ describe('LeaderboardTable', () => {
     view.unmount();
   });
 
+  it('dims and un-ranks rows that did not pick the selected track', async () => {
+    const view = await mountTable({
+      rows: [
+        {
+          rank: 1,
+          nickname: 'Alice',
+          track: 'runtime_ms',
+          scores: [
+            { metric_id: 'runtime_ms', value: 92 },
+            { metric_id: 'latency_ms', value: 18 }
+          ],
+          updated_at: '2026-03-31T09:00:00Z'
+        },
+        {
+          rank: 2,
+          nickname: 'Bob',
+          track: 'latency_ms',
+          scores: [
+            { metric_id: 'runtime_ms', value: 89 },
+            { metric_id: 'latency_ms', value: 15 }
+          ],
+          updated_at: '2026-03-31T10:00:00Z'
+        },
+        {
+          rank: 3,
+          nickname: 'NoTrack',
+          scores: [
+            { metric_id: 'runtime_ms', value: 70 },
+            { metric_id: 'latency_ms', value: 20 }
+          ],
+          updated_at: '2026-03-31T11:00:00Z'
+        }
+      ],
+      metrics: [
+        { id: 'runtime_ms', name: 'Runtime', sort: 'desc' },
+        { id: 'latency_ms', name: 'Latency', sort: 'asc' }
+      ],
+      selectedMetricId: 'runtime_ms',
+      apiHint: 'GET /api/labs/sorting/board'
+    });
+
+    const rows = document.querySelectorAll('[data-testid="leaderboard-row"]');
+    expect(rows).toHaveLength(3);
+
+    expect(rows[0]?.textContent).toContain('1');
+    expect(rows[0]?.classList.contains('board-table__row--unranked')).toBe(false);
+
+    expect(rows[1]?.textContent).toContain('—');
+    expect(rows[1]?.classList.contains('board-table__row--unranked')).toBe(true);
+
+    expect(rows[2]?.textContent).toContain('—');
+    expect(rows[2]?.classList.contains('board-table__row--unranked')).toBe(true);
+
+    view.unmount();
+  });
+
   it('omits the Track column when the board is not track-based', async () => {
     const view = await mountTable({
       rows: [
