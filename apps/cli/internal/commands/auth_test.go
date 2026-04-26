@@ -24,6 +24,32 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+func legacyAPIPath(path string) string {
+	// v2 labs are used by the CLI, but tests often implement the legacy v1 paths.
+	if strings.HasPrefix(path, "/api/v2/labs/") {
+		return "/api/labs/" + strings.TrimPrefix(path, "/api/v2/labs/")
+	}
+	if strings.HasPrefix(path, "/api/v1") {
+		return "/api" + strings.TrimPrefix(path, "/api/v1")
+	}
+	return path
+}
+
+func signedAPIPath(path string) string {
+	trimmed := strings.TrimSpace(path)
+	if strings.HasPrefix(trimmed, "/api/v1/") || trimmed == "/api/v1" {
+		return trimmed
+	}
+	// Auth / infra endpoints are intentionally unversioned.
+	if strings.HasPrefix(trimmed, "/api/web/") || strings.HasPrefix(trimmed, "/api/device/") || strings.HasPrefix(trimmed, "/api/dev/") {
+		return trimmed
+	}
+	if strings.HasPrefix(trimmed, "/api/") {
+		return "/api/v1" + strings.TrimPrefix(trimmed, "/api")
+	}
+	return trimmed
+}
+
 func TestRootHelpUsesBinaryNameAndFriendlyConfigDir(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -676,6 +702,7 @@ func TestBoardCommandUsesLocalProjectConfigDefaults(t *testing.T) {
 	var stdout bytes.Buffer
 	var calls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		calls++
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
@@ -740,6 +767,7 @@ func TestBoardCommandPrefersEnvironmentServerURLOverLocalProjectConfig(t *testin
 
 	var envCalls int
 	envSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		envCalls++
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
@@ -815,6 +843,7 @@ func TestKeysCommandsListAndRevokeSignedRequests(t *testing.T) {
 		t.Fatalf("PublicKeyFingerprint() error = %v", err)
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		if got := strings.TrimSpace(r.Header.Get("X-LabKit-Key-ID")); got != "" {
 			t.Fatalf("X-LabKit-Key-ID = %q, want empty", got)
 		}
@@ -833,7 +862,7 @@ func TestKeysCommandsListAndRevokeSignedRequests(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read body: %v", err)
 		}
-		payload := auth.NewPayload(strings.ToUpper(r.Method)+" "+r.URL.Path, ts, strings.TrimSpace(r.Header.Get("X-LabKit-Nonce")), nil).
+		payload := auth.NewPayload(strings.ToUpper(r.Method)+" "+signedAPIPath(r.URL.Path), ts, strings.TrimSpace(r.Header.Get("X-LabKit-Nonce")), nil).
 			WithContentHash(sha256Hex(body))
 		verifier := auth.Verifier{
 			Now:     func() time.Time { return fixedNow },
@@ -930,6 +959,7 @@ func TestRevokeCommandShowsStructuredServerErrorMessage(t *testing.T) {
 		t.Fatalf("PublicKeyFingerprint() error = %v", err)
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		if got := strings.TrimSpace(r.Header.Get("X-LabKit-Key-ID")); got != "" {
 			t.Fatalf("X-LabKit-Key-ID = %q, want empty", got)
 		}
@@ -948,7 +978,7 @@ func TestRevokeCommandShowsStructuredServerErrorMessage(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read body: %v", err)
 		}
-		payload := auth.NewPayload(strings.ToUpper(r.Method)+" "+r.URL.Path, ts, strings.TrimSpace(r.Header.Get("X-LabKit-Nonce")), nil).
+		payload := auth.NewPayload(strings.ToUpper(r.Method)+" "+signedAPIPath(r.URL.Path), ts, strings.TrimSpace(r.Header.Get("X-LabKit-Nonce")), nil).
 			WithContentHash(sha256Hex(body))
 		verifier := auth.Verifier{
 			Now:     func() time.Time { return fixedNow },

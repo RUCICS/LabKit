@@ -8,12 +8,16 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+
+	"labkit.local/apps/cli/internal/buildinfo"
 )
 
 type Client struct {
 	baseURL *url.URL
 	http    *http.Client
+	headers http.Header
 }
 
 func New(baseURL string, httpClient *http.Client) (*Client, error) {
@@ -27,7 +31,18 @@ func New(baseURL string, httpClient *http.Client) (*Client, error) {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	return &Client{baseURL: parsed, http: httpClient}, nil
+	h := make(http.Header)
+	h.Set("User-Agent", buildinfo.UserAgent("labkit"))
+	if v := strings.TrimSpace(buildinfo.NormalizedVersion()); v != "" {
+		h.Set("X-LabKit-Client-Version", v)
+	}
+	if code := buildinfo.VersionCode(); code > 0 {
+		h.Set("X-LabKit-Client-Version-Code", strconv.Itoa(code))
+	}
+	if commit := strings.TrimSpace(buildinfo.Commit); commit != "" && commit != "unknown" {
+		h.Set("X-LabKit-Client-Commit", commit)
+	}
+	return &Client{baseURL: parsed, http: httpClient, headers: h}, nil
 }
 
 func (c *Client) NewRequest(ctx context.Context, method, path string, body any) (*http.Request, error) {
@@ -53,6 +68,13 @@ func (c *Client) NewRequest(ctx context.Context, method, path string, body any) 
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	for k, vs := range c.headers {
+		for _, v := range vs {
+			if req.Header.Get(k) == "" {
+				req.Header.Add(k, v)
+			}
+		}
+	}
 	return req, nil
 }
 
@@ -69,6 +91,13 @@ func (c *Client) NewRequestWithBytes(ctx context.Context, method, path string, b
 	}
 	if contentType != "" {
 		req.Header.Set("Content-Type", contentType)
+	}
+	for k, vs := range c.headers {
+		for _, v := range vs {
+			if req.Header.Get(k) == "" {
+				req.Header.Add(k, v)
+			}
+		}
 	}
 	return req, nil
 }

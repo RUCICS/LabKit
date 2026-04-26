@@ -28,6 +28,20 @@ import (
 	"labkit.local/packages/go/manifest"
 )
 
+func apiV1Path(path string) string {
+	if strings.HasPrefix(path, "/api/v1") {
+		return path
+	}
+	// Auth / infra endpoints are intentionally unversioned.
+	if strings.HasPrefix(path, "/api/web/") || strings.HasPrefix(path, "/api/device/") || strings.HasPrefix(path, "/api/dev/") {
+		return path
+	}
+	if strings.HasPrefix(path, "/api/") {
+		return "/api/v1" + strings.TrimPrefix(path, "/api")
+	}
+	return path
+}
+
 func TestSubmitCommandRejectsFilesNotInManifestBeforePosting(t *testing.T) {
 	configDir := t.TempDir()
 	keyPath := filepath.Join(configDir, "id_ed25519")
@@ -37,6 +51,7 @@ func TestSubmitCommandRejectsFilesNotInManifestBeforePosting(t *testing.T) {
 
 	var postCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -301,6 +316,7 @@ func TestSubmitCommandSignsMultipartSubmission(t *testing.T) {
 	var stdout bytes.Buffer
 	var captured submitCapture
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		if maybeServeSubmitPrecheck(t, w, r, pub) {
 			return
 		}
@@ -419,6 +435,7 @@ func TestSubmitCommandWaitsForFinalStatusAndRendersScores(t *testing.T) {
 	finishedAt := time.Date(2026, 3, 31, 12, 10, 0, 0, time.UTC)
 	createdAt := time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		if maybeServeSubmitPrecheck(t, w, r, pub) {
 			return
 		}
@@ -570,6 +587,7 @@ func TestSubmitCommandShowsInitialFeedbackBeforeServerAcceptsSubmission(t *testi
 	}
 	defer release()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		if maybeServeSubmitPrecheck(t, w, r, pub) {
 			return
 		}
@@ -682,6 +700,7 @@ func TestSubmitCommandDuplicateTTYEnterContinues(t *testing.T) {
 	var stdout bytes.Buffer
 	var submitCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -787,6 +806,7 @@ func TestSubmitCommandDuplicateTTYNoCancels(t *testing.T) {
 	var stdout bytes.Buffer
 	var submitCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -877,6 +897,7 @@ func TestSubmitCommandDuplicateNonTTYWarnsAndContinues(t *testing.T) {
 	var stdout bytes.Buffer
 	var submitCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -961,6 +982,7 @@ func TestSubmitCommandContinuesWhenPrecheckFails(t *testing.T) {
 	var stdout bytes.Buffer
 	var submitCalls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -1041,6 +1063,7 @@ func TestSubmitCommandDetachAndNoWaitSkipPolling(t *testing.T) {
 			var stdout bytes.Buffer
 			var getCalls int
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				r.URL.Path = legacyAPIPath(r.URL.Path)
 				if maybeServeSubmitPrecheck(t, w, r, pub) {
 					return
 				}
@@ -1131,6 +1154,7 @@ func TestSubmitCommandRendersQuotaSummary(t *testing.T) {
 	var stdout bytes.Buffer
 	submissionID := "11111111-1111-7111-8111-111111111111"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -1218,6 +1242,7 @@ func TestSubmitCommandRendersFreeVerdictQuotaSummary(t *testing.T) {
 	var stdout bytes.Buffer
 	submissionID := "11111111-1111-7111-8111-111111111111"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -1308,6 +1333,7 @@ func TestSubmitCommandRendersFailureMessageAndDetailInResult(t *testing.T) {
 	finishedAt := time.Date(2026, 3, 31, 12, 2, 30, 0, time.UTC)
 	createdAt := time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		if maybeServeSubmitPrecheck(t, w, r, pub) {
 			return
 		}
@@ -1430,6 +1456,7 @@ func TestSubmitCommandInterruptsWaitingWithHint(t *testing.T) {
 		return ctx, cancel
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		if maybeServeSubmitPrecheck(t, w, r, pub) {
 			return
 		}
@@ -1517,6 +1544,7 @@ func TestSubmitCommandInterruptsWaitingWithHint(t *testing.T) {
 func TestBoardCommandDisplaysRowsByRequestedMetric(t *testing.T) {
 	var stdout bytes.Buffer
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -1597,6 +1625,7 @@ func TestBoardCommandUsesSignedRequestAndHighlightsCurrentUser(t *testing.T) {
 
 	var stdout bytes.Buffer
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -1669,6 +1698,7 @@ func TestBoardCommandRendersQuotaSummaryForSignedUser(t *testing.T) {
 
 	var stdout bytes.Buffer
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -1722,6 +1752,7 @@ func TestBoardCommandRendersQuotaSummaryForSignedUser(t *testing.T) {
 func TestBoardCommandOmitsQuotaSummaryWhenAnonymous(t *testing.T) {
 	var stdout bytes.Buffer
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -1770,6 +1801,7 @@ func TestBoardCommandOmitsQuotaSummaryWhenAnonymous(t *testing.T) {
 func TestBoardCommandShowsEmptyState(t *testing.T) {
 	var stdout bytes.Buffer
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -1828,6 +1860,7 @@ func TestHistoryCommandRendersSubmissionList(t *testing.T) {
 
 	var stdout bytes.Buffer
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -1910,6 +1943,7 @@ func TestHistoryCommandRendersQuotaSummary(t *testing.T) {
 
 	var stdout bytes.Buffer
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -1973,6 +2007,7 @@ func TestHistoryCommandShowsEmptyState(t *testing.T) {
 
 	var stdout bytes.Buffer
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -2035,6 +2070,7 @@ func TestHistoryCommandWithSubmissionIDShowsDetail(t *testing.T) {
 	finishedAt := time.Date(2026, 3, 31, 11, 10, 0, 0, time.UTC)
 	createdAt := time.Date(2026, 3, 31, 11, 0, 0, 0, time.UTC)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -2103,6 +2139,7 @@ func TestNickCommandUpdatesNickname(t *testing.T) {
 	var stdout bytes.Buffer
 	var captured updateCapture
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		switch {
 		case r.Method == http.MethodPut && r.URL.Path == "/api/profile":
 			captured = captureJSONUpdateRequest(t, r, "/api/profile", priv.Public().(ed25519.PublicKey))
@@ -2158,6 +2195,7 @@ func TestTrackCommandUpdatesTrack(t *testing.T) {
 	var stdout bytes.Buffer
 	var captured updateCapture
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = legacyAPIPath(r.URL.Path)
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/api/labs/sorting":
 			writeLabManifest(t, w, manifest.Manifest{
@@ -2384,7 +2422,7 @@ func captureJSONUpdateRequest(t *testing.T, r *http.Request, path string, pub ed
 		t.Fatalf("DecodeString(signature): %v", err)
 	}
 	sum := sha256.Sum256(body)
-	payload := auth.NewPayload(strings.ToUpper(r.Method)+" "+path, timestamp, r.Header.Get("X-LabKit-Nonce"), nil).WithContentHash(hex.EncodeToString(sum[:]))
+	payload := auth.NewPayload(strings.ToUpper(r.Method)+" "+apiV1Path(path), timestamp, r.Header.Get("X-LabKit-Nonce"), nil).WithContentHash(hex.EncodeToString(sum[:]))
 	signingBytes, err := payload.SigningBytes()
 	if err != nil {
 		t.Fatalf("SigningBytes() error = %v", err)
@@ -2425,7 +2463,7 @@ func verifySignedRequest(t *testing.T, r *http.Request, path string, body []byte
 		return err
 	}
 	sum := sha256.Sum256(body)
-	payload := auth.NewPayload(strings.ToUpper(r.Method)+" "+path, timestamp, r.Header.Get("X-LabKit-Nonce"), nil).WithContentHash(hex.EncodeToString(sum[:]))
+	payload := auth.NewPayload(strings.ToUpper(r.Method)+" "+apiV1Path(path), timestamp, r.Header.Get("X-LabKit-Nonce"), nil).WithContentHash(hex.EncodeToString(sum[:]))
 	signingBytes, err := payload.SigningBytes()
 	if err != nil {
 		return err
@@ -2438,6 +2476,7 @@ func verifySignedRequest(t *testing.T, r *http.Request, path string, body []byte
 
 func maybeServeSubmitPrecheck(t *testing.T, w http.ResponseWriter, r *http.Request, pub ed25519.PublicKey) bool {
 	t.Helper()
+	r.URL.Path = legacyAPIPath(r.URL.Path)
 	if r.Method != http.MethodGet || r.URL.Path != "/api/labs/sorting/submit/precheck" {
 		return false
 	}

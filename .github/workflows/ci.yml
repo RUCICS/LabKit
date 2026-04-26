@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "apps/api/**"
+      - "apps/cli/**"
+      - "packages/go/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    paths:
+      - "apps/api/**"
+      - "apps/cli/**"
+      - "packages/go/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go test (api)
+        run: go test ./apps/api/...
+
+      - name: go test (cli)
+        run: go test ./apps/cli/...
+

@@ -12,8 +12,11 @@ artifacts/
 /labkit-worker
 
 .env
+.env.prod
+!.env.local
 __pycache__/
 .superpowers/
 .claude/
+.cursor/
 .worktrees/
 submission.json

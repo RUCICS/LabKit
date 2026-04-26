@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"labkit.local/apps/cli/internal/buildinfo"
 	"labkit.local/apps/cli/internal/config"
 	keycrypto "labkit.local/apps/cli/internal/crypto"
 	httpclient "labkit.local/apps/cli/internal/http"
@@ -64,6 +65,8 @@ func NewRootCommand(deps *Dependencies) *cobra.Command {
 			return cmd.Help()
 		},
 	}
+	cmd.Version = buildinfo.NormalizedVersion()
+	cmd.SetVersionTemplate(versionTemplate(deps.BinaryName))
 	cmd.SetOut(deps.Out)
 	cmd.SetErr(deps.Err)
 	cmd.PersistentFlags().StringVar(&deps.ConfigDir, "config-dir", deps.ConfigDir, "Path to the local LabKit config directory")
@@ -82,6 +85,40 @@ func NewRootCommand(deps *Dependencies) *cobra.Command {
 	cmd.AddCommand(NewNickCommand(deps))
 	cmd.AddCommand(NewTrackCommand(deps))
 	return cmd
+}
+
+func versionTemplate(binaryName string) string {
+	name := strings.TrimSpace(binaryName)
+	if name == "" {
+		name = "labkit"
+	}
+	v := strings.TrimSpace(buildinfo.NormalizedVersion())
+	if v == "" {
+		v = "dev"
+	}
+
+	var b strings.Builder
+	b.WriteString(name)
+	b.WriteString(" ")
+	b.WriteString(v)
+	b.WriteString("\n")
+
+	if commit := strings.TrimSpace(buildinfo.Commit); commit != "" && commit != "unknown" {
+		b.WriteString("commit: ")
+		b.WriteString(commit)
+		b.WriteString("\n")
+	}
+	if date := strings.TrimSpace(buildinfo.Date); date != "" && date != "unknown" {
+		b.WriteString("date:   ")
+		b.WriteString(date)
+		b.WriteString("\n")
+	}
+	if code := buildinfo.VersionCode(); code > 0 {
+		b.WriteString("code:   ")
+		b.WriteString(strconv.Itoa(code))
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 func NewAuthCommand(deps *Dependencies) *cobra.Command {
@@ -211,6 +248,7 @@ func NewAuthCommand(deps *Dependencies) *cobra.Command {
 type apiClient struct {
 	base *httpclient.Client
 	now  func() time.Time
+	apiPrefix string
 }
 
 type deviceAuthorizeResponse struct {
@@ -249,7 +287,18 @@ func newAPIClient(baseURL string, httpClient *http.Client, now func() time.Time)
 	if now == nil {
 		now = time.Now
 	}
-	return &apiClient{base: base, now: now}, nil
+	return &apiClient{base: base, now: now, apiPrefix: "/api/v1"}, nil
+}
+
+func (c *apiClient) apiPath(path string) string {
+	p := strings.TrimSpace(path)
+	if p == "" {
+		return c.apiPrefix
+	}
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return c.apiPrefix + p
 }
 
 func (c *apiClient) deviceAuthorize(ctx context.Context, publicKey, deviceName string) (deviceAuthorizeResponse, error) {
@@ -280,7 +329,7 @@ func (c *apiClient) devicePoll(ctx context.Context, deviceCode string) (devicePo
 }
 
 func (c *apiClient) listKeys(ctx context.Context, cfg config.Config, private ed25519.PrivateKey) ([]keyListEntry, error) {
-	req, err := c.signedRequest(ctx, http.MethodGet, "/api/keys", nil, cfg, private)
+	req, err := c.signedRequest(ctx, http.MethodGet, c.apiPath("/keys"), nil, cfg, private)
 	if err != nil {
 		return nil, err
 	}
@@ -292,7 +341,7 @@ func (c *apiClient) listKeys(ctx context.Context, cfg config.Config, private ed2
 }
 
 func (c *apiClient) revokeKey(ctx context.Context, cfg config.Config, private ed25519.PrivateKey, keyID int64) error {
-	path := "/api/keys/" + strconv.FormatInt(keyID, 10)
+	path := c.apiPath("/keys/") + strconv.FormatInt(keyID, 10)
 	req, err := c.signedRequest(ctx, http.MethodDelete, path, nil, cfg, private)
 	if err != nil {
 		return err

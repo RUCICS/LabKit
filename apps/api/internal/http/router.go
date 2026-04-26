@@ -1,12 +1,15 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 
+	v2http "labkit.local/apps/api/internal/http/v2"
 	"labkit.local/apps/api/internal/http/middleware"
 	authsvc "labkit.local/apps/api/internal/service/auth"
+	labsvc "labkit.local/apps/api/internal/service/labs"
 	websession "labkit.local/apps/api/internal/service/websession"
 )
 
@@ -113,34 +116,19 @@ func NewRouter(options ...RouterOption) *Router {
 	adminGuard := adminAuthMiddleware(cfg.adminToken)
 
 	mux.Handle("GET /healthz", &HealthHandler{})
-	mux.HandleFunc("POST /api/device/authorize", authHandler.CreateDeviceAuthorizationRequest)
-	mux.HandleFunc("POST /api/device/poll", authHandler.PollDeviceAuthorizationRequest)
-	mux.Handle("GET /api/device/verify", verifyHandler)
-	mux.HandleFunc("POST /api/web/session-ticket", webSessionHandler.CreateSessionTicket)
-	mux.HandleFunc("GET /auth/session", webSessionHandler.ServeSessionShell)
-	mux.HandleFunc("POST /auth/session/exchange", webSessionHandler.ExchangeSessionTicket)
+
+	registerAuthRoutes(mux, authHandler, verifyHandler, webSessionHandler)
 	if cfg.devMode {
-		mux.HandleFunc("POST /api/dev/device/bind", devDeviceHandler.BindDevice)
+		registerDevRoutes(mux, devDeviceHandler)
 	}
-	mux.HandleFunc("GET /api/labs", labsHandler.ListLabs)
-	mux.HandleFunc("GET /api/labs/{labID}", labsHandler.GetLab)
-	mux.HandleFunc("GET /api/labs/{labID}/board", leaderboardHandler.GetBoard)
-	mux.HandleFunc("GET /api/labs/{labID}/submit/precheck", submissionsHandler.GetSubmitPrecheck)
-	mux.HandleFunc("POST /api/labs/{labID}/submit", submissionsHandler.CreateSubmission)
-	mux.HandleFunc("POST /api/labs/{labID}/submissions", submissionsHandler.CreateSubmission)
-	mux.HandleFunc("GET /api/labs/{labID}/history", historyHandler.ListHistory)
-	mux.HandleFunc("GET /api/labs/{labID}/submissions/{submissionID}", historyHandler.GetSubmissionDetail)
-	mux.HandleFunc("GET /api/profile", profileHandler.GetProfile)
-	mux.HandleFunc("PUT /api/profile", profileHandler.UpdateProfile)
-	mux.HandleFunc("PUT /api/labs/{labID}/nickname", profileHandler.UpdateNickname)
-	mux.HandleFunc("PUT /api/labs/{labID}/track", profileHandler.UpdateTrack)
-	mux.HandleFunc("GET /api/keys", keysHandler.ListKeys)
-	mux.HandleFunc("DELETE /api/keys/{keyID}", keysHandler.RevokeKey)
-	mux.Handle("POST /api/admin/labs", adminGuard(http.HandlerFunc(labsHandler.RegisterLab)))
-	mux.Handle("PUT /api/admin/labs/{labID}", adminGuard(http.HandlerFunc(labsHandler.UpdateLab)))
-	mux.Handle("GET /api/admin/labs/{labID}/grades", adminGuard(http.HandlerFunc(adminHandler.ExportGrades)))
-	mux.Handle("POST /api/admin/labs/{labID}/reeval", adminGuard(http.HandlerFunc(adminHandler.Reevaluate)))
-	mux.Handle("GET /api/admin/labs/{labID}/queue", adminGuard(http.HandlerFunc(adminHandler.GetQueueStatus)))
+
+	// v1 API: existing production surface.
+	registerV1APIRoutes(mux, "/api", labsHandler, leaderboardHandler, submissionsHandler, historyHandler, profileHandler, keysHandler, adminHandler, adminGuard)
+	// Versioned alias for v1, so clients can opt into explicit versioning.
+	registerV1APIRoutes(mux, "/api/v1", labsHandler, leaderboardHandler, submissionsHandler, historyHandler, profileHandler, keysHandler, adminHandler, adminGuard)
+
+	// v2 API: new stable JSON contract (lowercase keys), implemented incrementally.
+	registerV2Routes(mux, cfg.labsService)
 
 	return &Router{
 		handler: middleware.RequestIDMiddleware(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
@@ -174,6 +162,78 @@ func NewRouter(options ...RouterOption) *Router {
 			}
 		})),
 	}
+}
+
+func registerAuthRoutes(
+	mux *http.ServeMux,
+	authHandler *AuthHandler,
+	verifyHandler *DeviceVerifyHandler,
+	webSessionHandler *WebSessionHandler,
+) {
+	mux.HandleFunc("POST /api/device/authorize", authHandler.CreateDeviceAuthorizationRequest)
+	mux.HandleFunc("POST /api/device/poll", authHandler.PollDeviceAuthorizationRequest)
+	mux.Handle("GET /api/device/verify", verifyHandler)
+	mux.HandleFunc("POST /api/web/session-ticket", webSessionHandler.CreateSessionTicket)
+	mux.HandleFunc("GET /auth/session", webSessionHandler.ServeSessionShell)
+	mux.HandleFunc("POST /auth/session/exchange", webSessionHandler.ExchangeSessionTicket)
+}
+
+func registerDevRoutes(mux *http.ServeMux, devDeviceHandler *DevDeviceHandler) {
+	mux.HandleFunc("POST /api/dev/device/bind", devDeviceHandler.BindDevice)
+}
+
+func registerV1APIRoutes(
+	mux *http.ServeMux,
+	apiPrefix string,
+	labsHandler *LabsHandler,
+	leaderboardHandler *LeaderboardHandler,
+	submissionsHandler *SubmissionsHandler,
+	historyHandler *HistoryHandler,
+	profileHandler *ProfileHandler,
+	keysHandler *KeysHandler,
+	adminHandler *AdminHandler,
+	adminGuard func(http.Handler) http.Handler,
+) {
+	mux.HandleFunc("GET "+apiPrefix+"/labs", labsHandler.ListLabs)
+	mux.HandleFunc("GET "+apiPrefix+"/labs/{labID}", labsHandler.GetLab)
+	mux.HandleFunc("GET "+apiPrefix+"/labs/{labID}/board", leaderboardHandler.GetBoard)
+	mux.HandleFunc("GET "+apiPrefix+"/labs/{labID}/submit/precheck", submissionsHandler.GetSubmitPrecheck)
+	mux.HandleFunc("POST "+apiPrefix+"/labs/{labID}/submit", submissionsHandler.CreateSubmission)
+	mux.HandleFunc("POST "+apiPrefix+"/labs/{labID}/submissions", submissionsHandler.CreateSubmission)
+	mux.HandleFunc("GET "+apiPrefix+"/labs/{labID}/history", historyHandler.ListHistory)
+	mux.HandleFunc("GET "+apiPrefix+"/labs/{labID}/submissions/{submissionID}", historyHandler.GetSubmissionDetail)
+	mux.HandleFunc("GET "+apiPrefix+"/profile", profileHandler.GetProfile)
+	mux.HandleFunc("PUT "+apiPrefix+"/profile", profileHandler.UpdateProfile)
+	mux.HandleFunc("PUT "+apiPrefix+"/labs/{labID}/nickname", profileHandler.UpdateNickname)
+	mux.HandleFunc("PUT "+apiPrefix+"/labs/{labID}/track", profileHandler.UpdateTrack)
+	mux.HandleFunc("GET "+apiPrefix+"/keys", keysHandler.ListKeys)
+	mux.HandleFunc("DELETE "+apiPrefix+"/keys/{keyID}", keysHandler.RevokeKey)
+	mux.Handle("POST "+apiPrefix+"/admin/labs", adminGuard(http.HandlerFunc(labsHandler.RegisterLab)))
+	mux.Handle("PUT "+apiPrefix+"/admin/labs/{labID}", adminGuard(http.HandlerFunc(labsHandler.UpdateLab)))
+	mux.Handle("GET "+apiPrefix+"/admin/labs/{labID}/grades", adminGuard(http.HandlerFunc(adminHandler.ExportGrades)))
+	mux.Handle("POST "+apiPrefix+"/admin/labs/{labID}/reeval", adminGuard(http.HandlerFunc(adminHandler.Reevaluate)))
+	mux.Handle("GET "+apiPrefix+"/admin/labs/{labID}/queue", adminGuard(http.HandlerFunc(adminHandler.GetQueueStatus)))
+}
+
+type v2LabsServiceAdapter struct {
+	v1 LabsService
+}
+
+func (a v2LabsServiceAdapter) ListPublicLabs(ctx context.Context) ([]labsvc.Lab, error) {
+	return a.v1.ListPublicLabs(ctx)
+}
+
+func (a v2LabsServiceAdapter) GetPublicLab(ctx context.Context, labID string) (labsvc.Lab, error) {
+	return a.v1.GetPublicLab(ctx, labID)
+}
+
+func registerV2Routes(mux *http.ServeMux, labsService LabsService) {
+	if mux == nil {
+		return
+	}
+	v2Labs := &v2http.LabsHandler{Service: v2LabsServiceAdapter{v1: labsService}}
+	mux.HandleFunc("GET /api/v2/labs", v2Labs.ListLabs)
+	mux.HandleFunc("GET /api/v2/labs/{labID}", v2Labs.GetLab)
 }
 
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {

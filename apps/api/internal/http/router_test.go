@@ -325,6 +325,85 @@ close = 2099-04-30T00:00:00Z
 	}
 }
 
+func TestRouterRegistersV1AliasRoutes(t *testing.T) {
+	repo := newHTTPFakeLabRepository()
+	service := labsvc.NewService(repo)
+	router := NewRouter(WithLabsService(service), WithAdminToken("secret-token"))
+
+	manifest := []byte(validLabManifestForHTTP(`
+visible = 2000-03-30T00:00:00Z
+open = 2000-03-31T00:00:00Z
+close = 2099-04-30T00:00:00Z
+`))
+	registerResponse := httptest.NewRecorder()
+	registerRequest := httptest.NewRequest(http.MethodPost, "/api/admin/labs", bytes.NewReader(manifest))
+	registerRequest.Header.Set("Authorization", "Bearer secret-token")
+	router.ServeHTTP(registerResponse, registerRequest)
+	if registerResponse.Code != http.StatusCreated {
+		t.Fatalf("POST /api/admin/labs status = %d, want %d body=%s", registerResponse.Code, http.StatusCreated, registerResponse.Body.String())
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/labs/sorting", nil)
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/labs/sorting status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if _, ok := payload["manifest"]; !ok {
+		t.Fatalf("payload missing manifest")
+	}
+}
+
+func TestRouterV2LabsEndpointsReturnLowercaseManifestKeys(t *testing.T) {
+	repo := newHTTPFakeLabRepository()
+	service := labsvc.NewService(repo)
+	router := NewRouter(WithLabsService(service), WithAdminToken("secret-token"))
+
+	manifest := []byte(validLabManifestForHTTP(`
+visible = 2000-03-30T00:00:00Z
+open = 2000-03-31T00:00:00Z
+close = 2099-04-30T00:00:00Z
+`))
+	registerResponse := httptest.NewRecorder()
+	registerRequest := httptest.NewRequest(http.MethodPost, "/api/admin/labs", bytes.NewReader(manifest))
+	registerRequest.Header.Set("Authorization", "Bearer secret-token")
+	router.ServeHTTP(registerResponse, registerRequest)
+	if registerResponse.Code != http.StatusCreated {
+		t.Fatalf("POST /api/admin/labs status = %d, want %d body=%s", registerResponse.Code, http.StatusCreated, registerResponse.Body.String())
+	}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v2/labs/sorting", nil)
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /api/v2/labs/sorting status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	manifestAny, ok := payload["manifest"]
+	if !ok {
+		t.Fatalf("payload missing manifest")
+	}
+	manifestMap, ok := manifestAny.(map[string]any)
+	if !ok {
+		t.Fatalf("manifest is not an object")
+	}
+	if _, ok := manifestMap["schedule"]; !ok {
+		t.Fatalf("manifest missing schedule")
+	}
+	if _, ok := manifestMap["Schedule"]; ok {
+		t.Fatalf("manifest unexpectedly contains Schedule (Go-style key)")
+	}
+}
+
 func TestRouterAdminLabEndpointsRequireBearerToken(t *testing.T) {
 	repo := newHTTPFakeLabRepository()
 	service := labsvc.NewService(repo)

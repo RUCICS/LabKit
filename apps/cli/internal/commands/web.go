@@ -95,6 +95,7 @@ func runWeb(ctx context.Context, deps *Dependencies, redirectPath string) error 
 
 func (c *apiClient) webSessionTicket(ctx context.Context, cfg config.Config, private ed25519.PrivateKey, redirectPath string) (*http.Request, error) {
 	body := map[string]string{"redirect_path": redirectPath}
+	// Web session is auth infrastructure, intentionally not versioned with the business API.
 	return c.signedRequest(ctx, http.MethodPost, "/api/web/session-ticket", body, cfg, private)
 }
 

@@ -1,0 +1,47 @@
+project_name: labkit
+
+release:
+  github:
+    owner: RUCICS
+    name: LabKit
+
+builds:
+  - id: labkit
+    main: ./apps/cli/cmd/labkit
+    binary: labkit
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X labkit.local/apps/cli/internal/buildinfo.Version={{ .Tag }}
+      - -X labkit.local/apps/cli/internal/buildinfo.Commit={{ .Commit }}
+      - -X labkit.local/apps/cli/internal/buildinfo.Date={{ .Date }}
+
+archives:
+  - id: default
+    builds:
+      - labkit
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: >-
+      {{ .ProjectName }}_{{ .Tag }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+

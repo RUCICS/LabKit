@@ -40,6 +40,63 @@ type labResponse struct {
 	ManifestUpdatedAt time.Time               `json:"manifest_updated_at,omitempty"`
 }
 
+// v2 lab payload uses a stable lowercase JSON contract. We convert it back into
+// manifest.PublicManifest so the rest of the CLI can remain unchanged.
+type v2LabResponse struct {
+	ID                string        `json:"id"`
+	Name              string        `json:"name"`
+	Manifest          v2PublicManifest `json:"manifest"`
+	ManifestUpdatedAt time.Time     `json:"manifest_updated_at,omitempty"`
+}
+
+type v2PublicManifest struct {
+	Lab      v2LabSection      `json:"lab"`
+	Submit   v2SubmitSection   `json:"submit"`
+	Eval     v2EvalSection     `json:"eval"`
+	Quota    v2QuotaSection    `json:"quota"`
+	Metrics  []v2MetricSection `json:"metrics"`
+	Board    v2BoardSection    `json:"board"`
+	Schedule v2ScheduleSection `json:"schedule"`
+}
+
+type v2LabSection struct {
+	ID   string            `json:"id"`
+	Name string            `json:"name"`
+	Tags map[string]string `json:"tags,omitempty"`
+}
+
+type v2SubmitSection struct {
+	Files   []string `json:"files"`
+	MaxSize string   `json:"max_size"`
+}
+
+type v2EvalSection struct {
+	Timeout int `json:"timeout"`
+}
+
+type v2QuotaSection struct {
+	Daily int      `json:"daily"`
+	Free  []string `json:"free"`
+}
+
+type v2MetricSection struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Sort string `json:"sort"`
+	Unit string `json:"unit,omitempty"`
+}
+
+type v2BoardSection struct {
+	RankBy string `json:"rank_by"`
+	Pick   bool   `json:"pick"`
+}
+
+type v2ScheduleSection struct {
+	Visible time.Time `json:"visible,omitempty"`
+	Open    time.Time `json:"open,omitempty"`
+	Close   time.Time `json:"close,omitempty"`
+}
+
 type boardResponse struct {
 	LabID          string                `json:"lab_id"`
 	SelectedMetric string                `json:"selected_metric"`
@@ -321,7 +378,7 @@ func runSubmit(ctx context.Context, deps *Dependencies, args []string, detach, n
 	}
 	payload := auth.NewPayload(labID, client.now().UTC(), nonce, submissionFileNames(files)).
 		WithContentHash(archiveHash)
-	req, err := client.signedRequestWithPayload(ctx, http.MethodPost, "/api/labs/"+labID+"/submit", body, contentType, cfg, privateKey, payload)
+	req, err := client.signedRequestWithPayload(ctx, http.MethodPost, client.apiPath("/labs/")+labID+"/submit", body, contentType, cfg, privateKey, payload)
 	if err != nil {
 		if live != nil {
 			_ = live.Stop()
@@ -640,19 +697,67 @@ func resolveServerURL(deps *Dependencies) (string, error) {
 }
 
 func (c *apiClient) getLab(ctx context.Context, labID string) (labResponse, error) {
-	req, err := c.base.NewRequest(ctx, http.MethodGet, "/api/labs/"+labID, nil)
+	// New CLI uses the latest stable contract where available.
+	req, err := c.base.NewRequest(ctx, http.MethodGet, "/api/v2/labs/"+labID, nil)
 	if err != nil {
 		return labResponse{}, err
 	}
-	var result labResponse
-	if err := c.doJSON(req, &result); err != nil {
+	var v2Result v2LabResponse
+	if err := c.doJSON(req, &v2Result); err != nil {
 		return labResponse{}, err
 	}
-	return result, nil
+	return v2LabResponseToV1(v2Result), nil
+}
+
+func v2LabResponseToV1(v2 v2LabResponse) labResponse {
+	out := labResponse{
+		ID:                v2.ID,
+		Name:              v2.Name,
+		ManifestUpdatedAt: v2.ManifestUpdatedAt,
+	}
+
+	pub := manifest.PublicManifest{}
+	pub.Lab.ID = v2.Manifest.Lab.ID
+	pub.Lab.Name = v2.Manifest.Lab.Name
+	if len(v2.Manifest.Lab.Tags) > 0 {
+		pub.Lab.Tags = map[string]string{}
+		for k, v := range v2.Manifest.Lab.Tags {
+			pub.Lab.Tags[k] = v
+		}
+	}
+
+	pub.Submit.Files = append([]string(nil), v2.Manifest.Submit.Files...)
+	pub.Submit.MaxSize = v2.Manifest.Submit.MaxSize
+
+	// v2 eval hides image; keep it empty.
+	pub.Eval.Timeout = v2.Manifest.Eval.Timeout
+
+	pub.Quota.Daily = v2.Manifest.Quota.Daily
+	pub.Quota.Free = append([]string(nil), v2.Manifest.Quota.Free...)
+
+	pub.Board.RankBy = v2.Manifest.Board.RankBy
+	pub.Board.Pick = v2.Manifest.Board.Pick
+
+	pub.Schedule.Visible = v2.Manifest.Schedule.Visible
+	pub.Schedule.Open = v2.Manifest.Schedule.Open
+	pub.Schedule.Close = v2.Manifest.Schedule.Close
+
+	pub.Metrics = make([]manifest.MetricSection, 0, len(v2.Manifest.Metrics))
+	for _, metric := range v2.Manifest.Metrics {
+		pub.Metrics = append(pub.Metrics, manifest.MetricSection{
+			ID:   metric.ID,
+			Name: metric.Name,
+			Sort: manifest.MetricSort(metric.Sort),
+			Unit: metric.Unit,
+		})
+	}
+
+	out.Manifest = pub
+	return out
 }
 
 func (c *apiClient) getBoard(ctx context.Context, labID, by string) (boardResponse, error) {
-	path := "/api/labs/" + labID + "/board"
+	path := c.apiPath("/labs/") + labID + "/board"
 	if strings.TrimSpace(by) != "" {
 		path += "?by=" + url.QueryEscape(by)
 	}
@@ -668,7 +773,7 @@ func (c *apiClient) getBoard(ctx context.Context, labID, by string) (boardRespon
 }
 
 func (c *apiClient) getSignedBoard(ctx context.Context, labID, by string, cfg config.Config, private ed25519.PrivateKey) (boardResponse, error) {
-	path := "/api/labs/" + labID + "/board"
+	path := c.apiPath("/labs/") + labID + "/board"
 	if strings.TrimSpace(by) != "" {
 		path += "?by=" + url.QueryEscape(by)
 	}
@@ -684,7 +789,7 @@ func (c *apiClient) getSignedBoard(ctx context.Context, labID, by string, cfg co
 }
 
 func (c *apiClient) getSubmitPrecheck(ctx context.Context, labID string, cfg config.Config, private ed25519.PrivateKey) (submitPrecheckResponse, error) {
-	req, err := c.signedRequest(ctx, http.MethodGet, "/api/labs/"+labID+"/submit/precheck", nil, cfg, private)
+	req, err := c.signedRequest(ctx, http.MethodGet, c.apiPath("/labs/")+labID+"/submit/precheck", nil, cfg, private)
 	if err != nil {
 		return submitPrecheckResponse{}, err
 	}
@@ -696,7 +801,7 @@ func (c *apiClient) getSubmitPrecheck(ctx context.Context, labID string, cfg con
 }
 
 func (c *apiClient) getSubmissionDetail(ctx context.Context, labID, submissionID string, cfg config.Config, private ed25519.PrivateKey) (submissionDetailResponse, error) {
-	path := "/api/labs/" + labID + "/submissions/" + submissionID
+	path := c.apiPath("/labs/") + labID + "/submissions/" + submissionID
 	req, err := c.signedRequest(ctx, http.MethodGet, path, nil, cfg, private)
 	if err != nil {
 		return submissionDetailResponse{}, err
@@ -709,7 +814,7 @@ func (c *apiClient) getSubmissionDetail(ctx context.Context, labID, submissionID
 }
 
 func (c *apiClient) getHistory(ctx context.Context, labID string, cfg config.Config, private ed25519.PrivateKey) (historyResponse, error) {
-	req, err := c.signedRequest(ctx, http.MethodGet, "/api/labs/"+labID+"/history", nil, cfg, private)
+	req, err := c.signedRequest(ctx, http.MethodGet, c.apiPath("/labs/")+labID+"/history", nil, cfg, private)
 	if err != nil {
 		return historyResponse{}, err
 	}
@@ -721,7 +826,7 @@ func (c *apiClient) getHistory(ctx context.Context, labID string, cfg config.Con
 }
 
 func (c *apiClient) updateProfileNickname(ctx context.Context, nickname string, cfg config.Config, private ed25519.PrivateKey) (profileResponse, error) {
-	req, err := c.signedRequest(ctx, http.MethodPut, "/api/profile", map[string]string{"nickname": nickname}, cfg, private)
+	req, err := c.signedRequest(ctx, http.MethodPut, c.apiPath("/profile"), map[string]string{"nickname": nickname}, cfg, private)
 	if err != nil {
 		return profileResponse{}, err
 	}
@@ -733,7 +838,7 @@ func (c *apiClient) updateProfileNickname(ctx context.Context, nickname string, 
 }
 
 func (c *apiClient) updateTrack(ctx context.Context, labID, track string, cfg config.Config, private ed25519.PrivateKey) (profileResponse, error) {
-	req, err := c.signedRequest(ctx, http.MethodPut, "/api/labs/"+labID+"/track", map[string]string{"track": track}, cfg, private)
+	req, err := c.signedRequest(ctx, http.MethodPut, c.apiPath("/labs/")+labID+"/track", map[string]string{"track": track}, cfg, private)
 	if err != nil {
 		return profileResponse{}, err
 	}
@@ -745,7 +850,7 @@ func (c *apiClient) updateTrack(ctx context.Context, labID, track string, cfg co
 }
 
 func (c *apiClient) createSubmission(ctx context.Context, labID string, body []byte, contentType string, cfg config.Config, private ed25519.PrivateKey) (submissionResponse, error) {
-	req, err := c.signedRawRequest(ctx, http.MethodPost, "/api/labs/"+labID+"/submit", body, contentType, cfg, private)
+	req, err := c.signedRawRequest(ctx, http.MethodPost, c.apiPath("/labs/")+labID+"/submit", body, contentType, cfg, private)
 	if err != nil {
 		return submissionResponse{}, err
 	}
