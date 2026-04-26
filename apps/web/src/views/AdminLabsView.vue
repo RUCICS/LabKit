@@ -11,7 +11,7 @@ import {
   readAPIError,
   writeAdminToken
 } from '../lib/admin';
-import { getLabPhase, labPhaseLabel } from '../lib/labs';
+import { getLabPhase, getLabSchedule, labPhaseLabel } from '../lib/labs';
 
 type AdminLab = PublicLab;
 
@@ -77,7 +77,7 @@ function beginUpdate(labId: string) {
 }
 
 function labPhase(lab: AdminLab) {
-  return getLabPhase(lab.manifest?.schedule);
+  return getLabPhase(getLabSchedule(lab.manifest));
 }
 
 async function submitManifest() {

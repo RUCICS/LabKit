@@ -38,6 +38,19 @@ type LabPayload = {
       sort: 'asc' | 'desc';
       unit?: string;
     }>;
+    // Go-style exported field names.
+    Board?: {
+      Pick?: boolean;
+    };
+    Schedule?: {
+      Close?: string;
+    };
+    Metrics?: Array<{
+      ID: string;
+      Name: string;
+      Sort: 'asc' | 'desc';
+      Unit?: string;
+    }>;
   };
 };
 
@@ -45,15 +58,15 @@ const labPayload: LabPayload = {
   id: 'sorting',
   name: 'CoLab 调度器竞赛',
   manifest: {
-    board: {
-      pick: true
+    Board: {
+      Pick: true
     },
-    metrics: [
-      { id: 'runtime_ms', name: 'Runtime', sort: 'desc', unit: 'x' },
-      { id: 'latency_ms', name: 'Latency', sort: 'asc', unit: 'x' }
+    Metrics: [
+      { ID: 'runtime_ms', Name: 'Runtime', Sort: 'desc', Unit: 'x' },
+      { ID: 'latency_ms', Name: 'Latency', Sort: 'asc', Unit: 'x' }
     ],
-    schedule: {
-      close: '2026-06-01T00:00:00Z'
+    Schedule: {
+      Close: '2026-06-01T00:00:00Z'
     }
   }
 };

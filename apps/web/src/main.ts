@@ -3,7 +3,7 @@ import { RouterLink, RouterView } from 'vue-router';
 import StatusBadge from './components/chrome/StatusBadge.vue';
 import type { LeaderboardLabDetail } from './components/board/types';
 import { readAPIError } from './lib/http';
-import { getLabPhase, labPhaseLabel } from './lib/labs';
+import { getLabPhase, getLabSchedule, labPhaseLabel } from './lib/labs';
 import { createAppPinia } from './stores';
 import { router } from './router';
 import './styles/main.css';
@@ -24,7 +24,7 @@ const App = defineComponent({
       return typeof value === 'string' ? value : '';
     });
 
-    const statusPhase = computed(() => (lab.value ? getLabPhase(lab.value.manifest?.schedule) : null));
+    const statusPhase = computed(() => (lab.value ? getLabPhase(getLabSchedule(lab.value.manifest)) : null));
     const showAdmin = computed(() => Boolean(sessionStorage.getItem('labkit_admin_token')));
 
     async function loadLabContext(labId: string) {

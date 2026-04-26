@@ -3,22 +3,22 @@ import { computed } from 'vue';
 import StatusBadge from '../chrome/StatusBadge.vue';
 import RowLink from '../chrome/RowLink.vue';
 import type { PublicLab } from '../board/types';
-import { getLabPhase, labPhaseLabel, metricTone } from '../../lib/labs';
+import { getLabCloseISO, getLabMetrics, getLabPhase, getLabSchedule, labPhaseLabel, metricTone } from '../../lib/labs';
 
 const props = defineProps<{
   lab: PublicLab;
   to: string;
 }>();
 
-const phase = computed(() => getLabPhase(props.lab.manifest?.schedule));
+const phase = computed(() => getLabPhase(getLabSchedule(props.lab.manifest)));
 
 const closeDate = computed(() => {
-  const close = Date.parse(props.lab.manifest?.schedule?.close ?? '');
+  const close = Date.parse(getLabCloseISO(getLabSchedule(props.lab.manifest)));
   if (Number.isNaN(close)) return 'TBD';
   return new Intl.DateTimeFormat('en-US', { month: '2-digit', day: '2-digit' }).format(close);
 });
 
-const metrics = computed(() => props.lab.manifest?.metrics ?? []);
+const metrics = computed(() => getLabMetrics(props.lab.manifest));
 const visibleMetrics = computed(() => metrics.value.slice(0, 3));
 const overflowCount = computed(() => Math.max(0, metrics.value.length - visibleMetrics.value.length));
 

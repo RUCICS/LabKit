@@ -47,11 +47,17 @@ export interface LabManifestSchedule {
   visible?: string;
   open?: string;
   close?: string;
+  // API payloads coming from Go structs may use exported field names.
+  Visible?: string;
+  Open?: string;
+  Close?: string;
 }
 
 export interface LabManifestBoard {
   pick?: boolean;
   rank_by?: string;
+  Pick?: boolean;
+  RankBy?: string;
 }
 
 export interface LabManifest {
@@ -61,6 +67,13 @@ export interface LabManifest {
   board?: LabManifestBoard;
   schedule?: LabManifestSchedule;
   metrics?: LabManifestMetric[];
+  // API payloads coming from Go structs may use exported field names.
+  Lab?: {
+    Tags?: Record<string, string>;
+  };
+  Board?: LabManifestBoard;
+  Schedule?: LabManifestSchedule;
+  Metrics?: LabManifestMetric[];
 }
 
 export interface LeaderboardLabDetail {

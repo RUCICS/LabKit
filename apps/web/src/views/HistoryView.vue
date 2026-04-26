@@ -5,7 +5,7 @@ import StatusBadge from '../components/chrome/StatusBadge.vue';
 import VerdictBadge from '../components/chrome/VerdictBadge.vue';
 import type { LeaderboardLabDetail, QuotaSummary } from '../components/board/types';
 import { readAPIError } from '../lib/http';
-import { getLabPhase, labPhaseLabel } from '../lib/labs';
+import { getLabPhase, getLabSchedule, labPhaseLabel } from '../lib/labs';
 
 type HistoryItem = {
   id: string;
@@ -40,7 +40,7 @@ const quota = ref<QuotaSummary | null>(null);
 const lab = ref<LeaderboardLabDetail | null>(null);
 
 const labTitle = computed(() => lab.value?.name?.trim() || props.labId);
-const phase = computed(() => (lab.value ? getLabPhase(lab.value.manifest?.schedule) : 'open'));
+const phase = computed(() => (lab.value ? getLabPhase(getLabSchedule(lab.value.manifest)) : 'open'));
 
 function formatTime(value?: string) {
   const date = new Date(value ?? '');

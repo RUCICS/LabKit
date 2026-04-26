@@ -8,7 +8,7 @@ import LabContextBar from '../components/chrome/LabContextBar.vue';
 import QuotaSummaryBar from '../components/chrome/QuotaSummaryBar.vue';
 import type { LeaderboardBoard, LeaderboardLabDetail } from '../components/board/types';
 import { readAPIError } from '../lib/http';
-import { metricAccentTokens } from '../lib/labs';
+import { getLabCloseISO, getLabMetrics, getLabSchedule, metricAccentTokens } from '../lib/labs';
 
 const props = defineProps<{
   labId: string;
@@ -30,11 +30,13 @@ const selectedMetric = computed(
   () => board.value?.metrics.find((metric) => metric.id === activeMetric.value) ?? null
 );
 const labTitle = computed(() => lab.value?.name?.trim() || formatLabTitle(props.labId));
+const manifestMetrics = computed(() => getLabMetrics(lab.value?.manifest));
 const metricUnits = computed(() =>
-  Object.fromEntries((lab.value?.manifest?.metrics ?? []).map((metric) => [metric.id, metric.unit ?? '']))
+  Object.fromEntries(manifestMetrics.value.map((metric) => [metric.id, metric.unit ?? '']))
 );
 
-const closeAtMs = computed(() => Date.parse(lab.value?.manifest?.schedule?.close ?? ''));
+const closeISO = computed(() => getLabCloseISO(getLabSchedule(lab.value?.manifest)));
+const closeAtMs = computed(() => Date.parse(closeISO.value));
 const remainingValue = computed(() =>
   Number.isNaN(closeAtMs.value) ? '—' : formatRemaining(closeAtMs.value)
 );
@@ -263,7 +265,7 @@ onBeforeUnmount(() => {
           :rows="board.rows"
           :metrics="board.metrics"
           :selected-metric-id="activeMetric"
-          :close-at="lab?.manifest?.schedule?.close"
+          :close-at="closeISO"
           :api-hint="`GET /api/labs/${board.lab_id}/board`"
           :metric-units="metricUnits"
         />
