@@ -101,6 +101,16 @@ describe('LeaderboardTable', () => {
             { metric_id: 'latency_ms', value: 20 }
           ],
           updated_at: '2026-03-31T11:00:00Z'
+        },
+        {
+          rank: 4,
+          nickname: 'Carol',
+          track: 'runtime_ms',
+          scores: [
+            { metric_id: 'runtime_ms', value: 60 },
+            { metric_id: 'latency_ms', value: 25 }
+          ],
+          updated_at: '2026-03-31T12:00:00Z'
         }
       ],
       metrics: [
@@ -112,7 +122,7 @@ describe('LeaderboardTable', () => {
     });
 
     const rows = document.querySelectorAll('[data-testid="leaderboard-row"]');
-    expect(rows).toHaveLength(3);
+    expect(rows).toHaveLength(4);
 
     expect(rows[0]?.textContent).toContain('1');
     expect(rows[0]?.classList.contains('board-table__row--unranked')).toBe(false);
@@ -122,6 +132,10 @@ describe('LeaderboardTable', () => {
 
     expect(rows[2]?.textContent).toContain('—');
     expect(rows[2]?.classList.contains('board-table__row--unranked')).toBe(true);
+
+    // Carol participates in runtime_ms, so her display rank should be 2 (Bob and NoTrack do not consume a rank).
+    expect(rows[3]?.textContent).toContain('2');
+    expect(rows[3]?.classList.contains('board-table__row--unranked')).toBe(false);
 
     view.unmount();
   });

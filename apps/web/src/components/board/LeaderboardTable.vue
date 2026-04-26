@@ -92,6 +92,19 @@ function participatesInSelectedTrack(row: LeaderboardRow) {
   }
   return !!row.track && row.track === props.selectedMetricId;
 }
+
+const rowsWithDisplayRank = computed(() => {
+  let nextRank = 1;
+  return props.rows.map((row) => {
+    const participates = participatesInSelectedTrack(row);
+    const displayRank = participates ? nextRank++ : null;
+    return {
+      row,
+      participates,
+      displayRank
+    };
+  });
+});
 </script>
 
 <template>
@@ -114,25 +127,25 @@ function participatesInSelectedTrack(row: LeaderboardRow) {
       </thead>
       <tbody>
         <tr
-          v-for="row in rows"
-          :key="`${row.rank}-${row.nickname}`"
+          v-for="entry in rowsWithDisplayRank"
+          :key="`${entry.row.rank}-${entry.row.nickname}`"
           data-testid="leaderboard-row"
           :class="{
-            'board-table__row--current': row.current_user,
-            'board-table__row--unranked': !participatesInSelectedTrack(row)
+            'board-table__row--current': entry.row.current_user,
+            'board-table__row--unranked': !entry.participates
           }"
-          :style="{ '--row-delay': `${Math.max(row.rank - 1, 0) * 30}ms` }"
+          :style="{ '--row-delay': `${Math.max((entry.displayRank ?? 1) - 1, 0) * 30}ms` }"
         >
           <td class="board-table__rank">
-            {{ participatesInSelectedTrack(row) ? row.rank : '—' }}
+            {{ entry.displayRank ?? '—' }}
           </td>
           <td class="board-table__nickname">
             <span
-              v-if="row.track"
+              v-if="entry.row.track"
               class="board-table__track-indicator"
-              :class="trackClass(row.track)"
+              :class="trackClass(entry.row.track)"
             />
-            <span>{{ row.nickname }}</span>
+            <span>{{ entry.row.nickname }}</span>
           </td>
           <td
             v-for="metric in metrics"
@@ -140,10 +153,10 @@ function participatesInSelectedTrack(row: LeaderboardRow) {
             class="board-table__metric"
             :class="{ 'board-table__metric-cell--selected': metric.id === selectedMetricId }"
           >
-            <span>{{ formatScore(scoreForRow(row, metric.id)) }}</span>
+            <span>{{ formatScore(scoreForRow(entry.row, metric.id)) }}</span>
             <span v-if="metricUnit(metric.id)" class="board-table__unit">{{ metricUnit(metric.id) }}</span>
           </td>
-          <td class="board-table__updated">{{ formatUpdatedAt(row.updated_at) }}</td>
+          <td class="board-table__updated">{{ formatUpdatedAt(entry.row.updated_at) }}</td>
         </tr>
       </tbody>
       <tfoot>
