@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/RUCICS/LabKit/compare/v0.1.3...v0.1.4) (2026-04-27)
+
+
+### Bug Fixes
+
+* **cli:** align board ranks with track selection ([4997e10](https://github.com/RUCICS/LabKit/commit/4997e107db49fd6c49d584d8e54f45910cc334ca))
+
 ## [0.1.3](https://github.com/RUCICS/LabKit/compare/labkit-v0.1.2...labkit-v0.1.3) (2026-04-27)
 
 
