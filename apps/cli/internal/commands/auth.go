@@ -65,6 +65,9 @@ func NewRootCommand(deps *Dependencies) *cobra.Command {
 			return cmd.Help()
 		},
 	}
+	cmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		maybeRemindUpdate(cmd, deps)
+	}
 	cmd.Version = buildinfo.NormalizedVersion()
 	cmd.SetVersionTemplate(versionTemplate(deps.BinaryName))
 	cmd.SetOut(deps.Out)
@@ -84,6 +87,7 @@ func NewRootCommand(deps *Dependencies) *cobra.Command {
 	cmd.AddCommand(NewHistoryCommand(deps))
 	cmd.AddCommand(NewNickCommand(deps))
 	cmd.AddCommand(NewTrackCommand(deps))
+	cmd.AddCommand(NewUpdateCommand(deps))
 	return cmd
 }
 
