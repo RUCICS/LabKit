@@ -11,8 +11,6 @@ permissions:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
-    env:
-      GOWORK: off
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,7 +22,7 @@ jobs:
           cache: true
 
       - name: Run CLI tests
-        run: go test ./apps/cli/...
+        run: go test -mod=readonly ./apps/cli/...
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
@@ -34,4 +32,5 @@ jobs:
           args: release --clean --config .goreleaser-cli.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOFLAGS: -mod=readonly
 
