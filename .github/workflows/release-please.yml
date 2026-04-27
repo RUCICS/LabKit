@@ -9,6 +9,7 @@ on:
       - "go.work"
       - "go.work.sum"
       - ".github/workflows/release-please.yml"
+  workflow_dispatch: {}
 
 permissions:
   contents: write
