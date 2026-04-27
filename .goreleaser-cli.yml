@@ -5,6 +5,9 @@ release:
   github:
     owner: RUCICS
     name: LabKit
+  # Release Please creates the GitHub Release (body from CHANGELOG); keep that text and only upload artifacts.
+  mode: keep-existing
+  replace_existing_artifacts: true
 
 builds:
   # Unix archives: binary name includes OS/ARCH (matches common handout naming, e.g. labkit-linux-amd64).
