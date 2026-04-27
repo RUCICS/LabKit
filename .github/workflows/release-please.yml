@@ -8,6 +8,9 @@ on:
       - "docs/reference/cli.md"
       - "go.work"
       - "go.work.sum"
+      - ".goreleaser-cli.yml"
+      - ".release-please-config.json"
+      - ".release-please-manifest.json"
       - ".github/workflows/release-please.yml"
   workflow_dispatch: {}
 
