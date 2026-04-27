@@ -264,6 +264,40 @@ func TestRenderBoardKeepsBadgeForCurrentUserTopThree(t *testing.T) {
 	}
 }
 
+func TestRenderBoardTrackBasedSkipsRankForOtherTrack(t *testing.T) {
+	var buf bytes.Buffer
+	lab := manifest.PublicManifest{
+		Metrics: []manifest.MetricSection{
+			{ID: "throughput", Name: "Throughput", Sort: manifest.MetricSortDesc},
+			{ID: "latency", Name: "Latency", Sort: manifest.MetricSortAsc},
+		},
+	}
+	board := boardResponse{
+		SelectedMetric: "latency",
+		Metrics: []boardMetricResponse{
+			{ID: "throughput", Name: "Throughput", Sort: "desc"},
+			{ID: "latency", Name: "Latency", Sort: "asc", Selected: true},
+		},
+		Rows: []boardRowResponse{
+			{Rank: 1, Nickname: "bob", Track: "latency", Scores: []boardScoreResponse{{MetricID: "latency", Value: 35}}, UpdatedAt: time.Now().Add(-2 * time.Hour)},
+			{Rank: 2, Nickname: "ada", Track: "throughput", Scores: []boardScoreResponse{{MetricID: "latency", Value: 50}}, UpdatedAt: time.Now().Add(-1 * time.Hour)},
+		},
+	}
+	if err := renderBoard(&buf, "labkit", lab, board); err != nil {
+		t.Fatalf("renderBoard() error = %v", err)
+	}
+	plain := stripANSIForTest(buf.String())
+	if !strings.Contains(plain, "1ST") || !strings.Contains(plain, "bob") {
+		t.Fatalf("renderBoard() plain = %q, want ranked bob on latency track", plain)
+	}
+	if strings.Contains(plain, "2ND") {
+		t.Fatalf("renderBoard() plain = %q, want no 2ND for other-track row", plain)
+	}
+	if !strings.Contains(plain, "—") {
+		t.Fatalf("renderBoard() plain = %q, want em dash for unranked row", plain)
+	}
+}
+
 func TestRenderHistoryShowsColoredStatusAndRelativeTime(t *testing.T) {
 	var buf bytes.Buffer
 	now := time.Date(2026, 4, 1, 12, 0, 0, 0, time.UTC)
@@ -1602,10 +1636,16 @@ func TestBoardCommandDisplaysRowsByRequestedMetric(t *testing.T) {
 	if !strings.Contains(plain, "Leaderboard · Sorting") {
 		t.Fatalf("stdout = %q, want lab-aware board heading", plain)
 	}
-	for _, want := range []string{"sorted by latency", "Throughput", "Latency", "1ST", "2ND", "ago"} {
+	for _, want := range []string{"sorted by latency", "Throughput", "Latency", "1ST", "ago"} {
 		if !strings.Contains(plain, want) {
 			t.Fatalf("stdout = %q, want %q", plain, want)
 		}
+	}
+	if strings.Contains(plain, "2ND") {
+		t.Fatalf("stdout = %q, want no 2ND when only one row participates in selected track", plain)
+	}
+	if !strings.Contains(plain, "—") {
+		t.Fatalf("stdout = %q, want em dash rank for non-participating track row", plain)
 	}
 	if strings.Index(plain, "Bob") > strings.Index(plain, "Ada") {
 		t.Fatalf("stdout row order = %q, want Bob before Ada", plain)

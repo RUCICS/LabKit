@@ -1140,8 +1140,32 @@ func renderBoard(out io.Writer, binaryName string, lab manifest.PublicManifest, 
 	for _, metric := range lab.Metrics {
 		unitByID[metric.ID] = metric.Unit
 	}
-	maxScore := float32(0)
+	trackBased := false
 	for _, row := range board.Rows {
+		if strings.TrimSpace(row.Track) != "" {
+			trackBased = true
+			break
+		}
+	}
+
+	displayRanks := make([]int, len(board.Rows))
+	for i := range displayRanks {
+		displayRanks[i] = -1
+	}
+	nextRank := 1
+	for i, row := range board.Rows {
+		participates := boardRowParticipatesInSelectedTrack(trackBased, board.SelectedMetric, row.Track)
+		if participates {
+			displayRanks[i] = nextRank
+			nextRank++
+		}
+	}
+
+	maxScore := float32(0)
+	for i, row := range board.Rows {
+		if displayRanks[i] < 0 {
+			continue
+		}
 		for _, s := range row.Scores {
 			if s.MetricID == board.SelectedMetric && s.Value > maxScore {
 				maxScore = s.Value
@@ -1150,7 +1174,7 @@ func renderBoard(out io.Writer, binaryName string, lab manifest.PublicManifest, 
 	}
 
 	now := time.Now()
-	for _, row := range board.Rows {
+	for i, row := range board.Rows {
 		scoreVal := float32(0)
 		for _, s := range row.Scores {
 			if s.MetricID == board.SelectedMetric {
@@ -1165,26 +1189,37 @@ func renderBoard(out io.Writer, binaryName string, lab manifest.PublicManifest, 
 			displayName = fmt.Sprintf("you (%s)", row.Nickname)
 		}
 
+		displayRank := displayRanks[i]
+		participates := displayRank >= 0
+
 		var fgColor, bgColor lipgloss.Color
 		switch {
-		case row.CurrentUser:
+		case row.CurrentUser && participates:
 			fgColor = lipgloss.Color("#9ece6a")
 			bgColor = lipgloss.Color("#1f2d1a")
-		case row.Rank == 1:
+		case row.CurrentUser && !participates:
+			fgColor = lipgloss.Color("#7fb86a")
+			bgColor = lipgloss.Color("#2a3d28")
+		case participates && displayRank == 1:
 			fgColor = lipgloss.Color("#e0af68")
 			bgColor = lipgloss.Color("#2a2015")
 		default:
-			fgColor = lipgloss.Color("#c0caf5")
-			bgColor = lipgloss.Color("#1e2030")
+			fgColor = lipgloss.Color("#7a819c")
+			bgColor = lipgloss.Color("#1a1b26")
 		}
 
-		renderedRank := renderBoardRankBadge(theme, row.Rank)
+		var renderedRank string
+		if participates {
+			renderedRank = renderBoardRankBadge(theme, displayRank)
+		} else {
+			renderedRank = ui.PadRight(theme.MutedStyle.Render("—"), rankW)
+		}
 		restRow := ui.PadRight(displayName, nickW) + gap +
 			ui.PadRight(scoreStr, scoreW) + gap +
 			ui.PadRight(updatedStr, updatedW)
 
 		fillFraction := 0.0
-		if maxScore > 0 {
+		if participates && maxScore > 0 {
 			fillFraction = float64(scoreVal) / float64(maxScore)
 		}
 
@@ -1195,6 +1230,13 @@ func renderBoard(out io.Writer, binaryName string, lab manifest.PublicManifest, 
 	}
 
 	return renderQuotaSummary(out, board.Quota, "")
+}
+
+func boardRowParticipatesInSelectedTrack(trackBased bool, selectedMetric, rowTrack string) bool {
+	if !trackBased {
+		return true
+	}
+	return strings.TrimSpace(rowTrack) != "" && strings.EqualFold(rowTrack, selectedMetric)
 }
 
 func renderHistory(out io.Writer, binaryName string, lab manifest.PublicManifest, history historyResponse) error {
