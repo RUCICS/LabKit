@@ -42,7 +42,7 @@ func authenticatePersonalRequest(w http.ResponseWriter, r *http.Request, auth pe
 	result, err := auth.Authenticate(r.Context(), personal.AuthInput{
 		KeyFingerprint: keyFingerprint,
 		Method:         r.Method,
-		Path:           r.URL.Path,
+		Path:           signedRequestPath(r),
 		Timestamp:      timestamp,
 		Nonce:          strings.TrimSpace(r.Header.Get("X-LabKit-Nonce")),
 		Signature:      signature,
@@ -92,4 +92,18 @@ func readRequestBody(r *http.Request) ([]byte, error) {
 	_ = r.Body.Close()
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	return body, nil
+}
+
+// signedRequestPath returns the path string that the CLI includes in the signed payload:
+// URL path plus raw query (when present). This must match apps/cli signedRequest(), which
+// passes the full request path including "?by=..." for leaderboard views.
+func signedRequestPath(r *http.Request) string {
+	if r == nil || r.URL == nil {
+		return ""
+	}
+	path := strings.TrimSpace(r.URL.Path)
+	if raw := strings.TrimSpace(r.URL.RawQuery); raw != "" {
+		return path + "?" + raw
+	}
+	return path
 }

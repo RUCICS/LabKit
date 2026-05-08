@@ -417,7 +417,7 @@ func (c *apiClient) doJSON(req *http.Request, target any) error {
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("request failed: %s", decodeAPIErrorMessage(body))
+		return newAPIError(resp.StatusCode, body)
 	}
 	if target == nil {
 		return nil
@@ -425,20 +425,63 @@ func (c *apiClient) doJSON(req *http.Request, target any) error {
 	return json.NewDecoder(resp.Body).Decode(target)
 }
 
+type apiError struct {
+	Status  int
+	Code    string
+	Message string
+}
+
+func (e *apiError) Error() string {
+	msg := strings.TrimSpace(e.Message)
+	if msg == "" {
+		msg = "unknown error"
+	}
+	return fmt.Sprintf("request failed: %s", msg)
+}
+
+func decodeAPIError(body []byte) (code string, message string, ok bool) {
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" {
+		return "", "", false
+	}
+	var payload struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return "", "", false
+	}
+	code = strings.TrimSpace(payload.Error.Code)
+	message = strings.TrimSpace(payload.Error.Message)
+	if code == "" && message == "" {
+		return "", "", false
+	}
+	return code, message, true
+}
+
 func decodeAPIErrorMessage(body []byte) string {
+	if _, message, ok := decodeAPIError(body); ok && strings.TrimSpace(message) != "" {
+		return strings.TrimSpace(message)
+	}
 	trimmed := strings.TrimSpace(string(body))
 	if trimmed == "" {
 		return "unknown error"
 	}
-	var payload struct {
-		Error struct {
-			Message string `json:"message"`
-		} `json:"error"`
-	}
-	if err := json.Unmarshal(body, &payload); err == nil && strings.TrimSpace(payload.Error.Message) != "" {
-		return strings.TrimSpace(payload.Error.Message)
-	}
 	return trimmed
+}
+
+func newAPIError(status int, body []byte) error {
+	trimmed := strings.TrimSpace(string(body))
+	code, message, ok := decodeAPIError(body)
+	if ok {
+		return &apiError{Status: status, Code: code, Message: message}
+	}
+	if trimmed == "" {
+		return &apiError{Status: status, Message: "unknown error"}
+	}
+	return &apiError{Status: status, Message: trimmed}
 }
 
 func normalizeDependencies(deps *Dependencies) *Dependencies {

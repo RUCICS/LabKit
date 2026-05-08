@@ -112,12 +112,31 @@ inserted_key AS (
     INSERT INTO user_keys (user_id, public_key, fingerprint, device_name)
     SELECT upsert_user.id, completed_request.public_key, $4, $5
     FROM upsert_user, completed_request
+    ON CONFLICT (fingerprint)
+        WHERE revoked_at IS NULL
+          AND fingerprint IS NOT NULL
+        DO UPDATE
+        SET device_name = EXCLUDED.device_name
+        WHERE user_keys.user_id = EXCLUDED.user_id
+          AND user_keys.public_key = EXCLUDED.public_key
     RETURNING id
+),
+resolved_key AS (
+    SELECT id
+    FROM inserted_key
+    UNION ALL
+    SELECT id
+    FROM user_keys
+    WHERE fingerprint = $4
+      AND revoked_at IS NULL
+      AND user_id = (SELECT id FROM upsert_user)
+      AND public_key = (SELECT public_key FROM completed_request)
+    LIMIT 1
 )
 SELECT upsert_user.id AS user_id,
-       inserted_key.id AS user_key_id,
+       resolved_key.id AS user_key_id,
        upsert_user.student_id
-FROM upsert_user, inserted_key;
+FROM upsert_user, resolved_key;
 
 -- name: ExpireDeviceAuthRequests :exec
 UPDATE device_auth_requests

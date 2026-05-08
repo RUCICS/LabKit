@@ -10,6 +10,7 @@ import (
 	"time"
 
 	boardsvc "labkit.local/apps/api/internal/service/leaderboard"
+	personal "labkit.local/apps/api/internal/service/personal"
 )
 
 func TestLeaderboardHandlerReturnsBoardJSON(t *testing.T) {
@@ -105,6 +106,27 @@ func TestLeaderboardHandlerUsesBrowserSessionViewer(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/labs/sorting/board", nil)
 	req.SetPathValue("labID", "sorting")
 	req.AddCookie(&http.Cookie{Name: browserSessionCookieName, Value: sessionToken})
+
+	handler.GetBoard(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	if svc.viewerUserID != 7 {
+		t.Fatalf("viewerUserID = %d, want 7", svc.viewerUserID)
+	}
+}
+
+func TestLeaderboardHandlerUsesPersonalAuthViewerWithByQuery(t *testing.T) {
+	repo := newPersonalTestRepo(t, true)
+	personalSvc := personal.NewService(repo)
+	svc := &capturingLeaderboardHTTPService{}
+	handler := &LeaderboardHandler{Service: svc, Personal: personalSvc}
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/labs/sorting/board?by=latency_ms", nil)
+	req.SetPathValue("labID", "sorting")
+	repo.signRequest(t, req, "/api/labs/sorting/board?by=latency_ms", nil, "nonce-board-signed-by", 11)
 
 	handler.GetBoard(rr, req)
 

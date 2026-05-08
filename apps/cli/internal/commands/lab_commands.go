@@ -514,6 +514,16 @@ func runBoard(ctx context.Context, deps *Dependencies, by string) error {
 				return readErr
 			}
 			board, fetchErr = client.getSignedBoard(ctx, labID, by, cfg, privateKey)
+			if fetchErr != nil {
+				var apiErr *apiError
+				if errors.As(fetchErr, &apiErr) && apiErr.Status == http.StatusUnauthorized {
+					if deps.Err != nil {
+						theme := ui.DefaultTheme()
+						_, _ = fmt.Fprintln(deps.Err, theme.MutedStyle.Render("Signed leaderboard request was unauthorized; showing public leaderboard. (Check --server-url or rerun auth)"))
+					}
+					board, fetchErr = client.getBoard(ctx, labID, by)
+				}
+			}
 			return fetchErr
 		}
 		board, fetchErr = client.getBoard(ctx, labID, by)
