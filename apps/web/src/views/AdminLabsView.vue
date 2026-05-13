@@ -29,7 +29,7 @@ async function loadLabs() {
   }
 }
 
-function openEdit(labId: string) {
+function openEdit(labId: string | null) {
   drawerLabId.value = labId;
   drawerOpen.value = true;
 }
@@ -53,7 +53,10 @@ onMounted(() => void loadLabs());
 <template>
   <AdminShell>
     <div class="admin-labs" data-testid="admin-labs">
-      <h1 class="admin-labs__title">Labs</h1>
+      <div class="admin-labs__header">
+        <h1 class="admin-labs__title">Labs</h1>
+        <button type="button" class="button" @click="openEdit(null)">+ New lab</button>
+      </div>
 
       <p v-if="loading" class="admin-labs__status">Loading…</p>
       <p v-else-if="error" class="admin-labs__status admin-labs__status--error">{{ error }}</p>
@@ -94,6 +97,13 @@ onMounted(() => void loadLabs());
   display: flex;
   flex-direction: column;
   gap: 20px;
+}
+
+.admin-labs__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .admin-labs__title {
