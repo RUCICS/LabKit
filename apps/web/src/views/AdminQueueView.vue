@@ -185,7 +185,7 @@ onMounted(() => {
         <span class="admin-queue__breadcrumb-sep">/</span>
         <span class="admin-queue__breadcrumb-lab">{{ resolvedLabId }}</span>
         <span class="admin-queue__breadcrumb-sep">/</span>
-        <span>Queue</span>
+        <span aria-current="page">Queue</span>
       </nav>
 
       <div class="admin-queue__panel">
@@ -196,7 +196,7 @@ onMounted(() => {
           <button type="button" class="button button--secondary" :disabled="actionBusy !== ''" @click="exportGrades">
             {{ actionBusy === 'export' ? 'Exporting…' : '↓ Export grades' }}
           </button>
-          <button type="button" class="button button--secondary" style="margin-left:auto" :disabled="loading" @click="loadQueue">↻ Refresh</button>
+          <button type="button" class="button button--secondary admin-queue__refresh" :disabled="loading" @click="loadQueue">↻ Refresh</button>
         </div>
 
         <p v-if="actionError" class="admin-queue__status admin-queue__status--error">
@@ -350,6 +350,10 @@ onMounted(() => {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.admin-queue__refresh {
+  margin-left: auto;
 }
 
 .admin-queue__summary {
