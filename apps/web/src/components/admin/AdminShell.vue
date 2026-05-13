@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { readAdminToken, sessionToken, clearAdminToken } from '../../lib/admin';
 
@@ -7,7 +7,7 @@ const router = useRouter();
 const tokenInputVisible = ref(false);
 const tokenDraft = ref('');
 
-const isAuthenticated = () => readAdminToken() !== '';
+const isAuthenticated = computed(() => readAdminToken() !== '');
 
 function showTokenInput() {
   tokenDraft.value = '';
@@ -45,7 +45,7 @@ function logout() {
         <div class="admin-shell__token-label">TOKEN</div>
         <template v-if="!tokenInputVisible">
           <div class="admin-shell__token-status">
-            <span v-if="isAuthenticated()" class="admin-shell__token-ok">● active</span>
+            <span v-if="isAuthenticated" class="admin-shell__token-ok">● active</span>
             <span v-else class="admin-shell__token-missing">● none</span>
             <div class="admin-shell__token-actions">
               <button type="button" class="admin-shell__icon-btn" title="Change token" @click="showTokenInput">✎</button>
