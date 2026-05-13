@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { RouterLink } from 'vue-router';
+import AdminShell from '../components/admin/AdminShell.vue';
 import VerdictBadge from '../components/chrome/VerdictBadge.vue';
 import {
   authorizedAdminHeaders,
@@ -176,171 +178,153 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="page-shell admin-queue-view" data-testid="page-shell">
-    <section class="admin-queue-view__header">
-      <div class="admin-queue-view__header-copy">
-        <h1>Queue status</h1>
-        <p v-if="resolvedLabId" class="admin-queue-view__lab">{{ resolvedLabId }}</p>
-      </div>
-      <span class="admin-queue-view__meta">Admin controls</span>
-    </section>
+  <AdminShell>
+    <div class="admin-queue" data-testid="admin-queue">
+      <nav class="admin-queue__breadcrumb" aria-label="breadcrumb">
+        <RouterLink :to="{ name: 'admin-labs' }" class="admin-queue__breadcrumb-link">← Labs</RouterLink>
+        <span class="admin-queue__breadcrumb-sep">/</span>
+        <span class="admin-queue__breadcrumb-lab">{{ resolvedLabId }}</span>
+        <span class="admin-queue__breadcrumb-sep">/</span>
+        <span>Queue</span>
+      </nav>
 
-    <section class="admin-queue-view__panel">
-      <div class="admin-queue-view__actions">
-        <button
-          type="button"
-          class="button"
-          :disabled="actionBusy !== ''"
-          @click="triggerReevaluation"
-        >
-          {{ actionBusy === 'reeval' ? 'Queueing…' : 'Reevaluate' }}
-        </button>
-        <button
-          type="button"
-          class="button button--secondary"
-          :disabled="actionBusy !== ''"
-          @click="exportGrades"
-        >
-          {{ actionBusy === 'export' ? 'Exporting…' : 'Export grades' }}
-        </button>
-      </div>
-
-      <p v-if="actionError" class="admin-queue-view__status admin-queue-view__status--error">
-        {{ actionError }}
-      </p>
-      <p v-else-if="actionNotice" class="admin-queue-view__status admin-queue-view__status--success">
-        {{ actionNotice }}
-      </p>
-      <p v-if="loading" class="admin-queue-view__status">Loading queue…</p>
-      <p v-else-if="error" class="admin-queue-view__status">{{ error }}</p>
-      <p v-else-if="!queue || queue.jobs.length === 0" class="admin-queue-view__status">
-        No recent jobs.
-      </p>
-      <div v-else class="admin-queue-view__jobs">
-        <div class="admin-queue-view__summary">
-          <span>{{ queueStats.total }} jobs</span>
-          <span>{{ queueStats.running }} running</span>
-          <span>{{ queueStats.queued }} queued</span>
+      <div class="admin-queue__panel">
+        <div class="admin-queue__actions">
+          <button type="button" class="button" :disabled="actionBusy !== ''" @click="triggerReevaluation">
+            {{ actionBusy === 'reeval' ? 'Queueing…' : '↺ Reevaluate all' }}
+          </button>
+          <button type="button" class="button button--secondary" :disabled="actionBusy !== ''" @click="exportGrades">
+            {{ actionBusy === 'export' ? 'Exporting…' : '↓ Export grades' }}
+          </button>
+          <button type="button" class="button button--secondary" style="margin-left:auto" :disabled="loading" @click="loadQueue">↻ Refresh</button>
         </div>
-        <div class="admin-queue-view__table" role="table" aria-label="Queue jobs">
-          <div class="admin-queue-view__row admin-queue-view__row--head" role="row">
-            <div class="admin-queue-view__cell admin-queue-view__cell--head" role="columnheader">
-              Job
-            </div>
-            <div class="admin-queue-view__cell admin-queue-view__cell--head" role="columnheader">
-              Status
-            </div>
-            <div class="admin-queue-view__cell admin-queue-view__cell--head" role="columnheader">
-              Submission
-            </div>
-            <div class="admin-queue-view__cell admin-queue-view__cell--head" role="columnheader">
-              User
-            </div>
-            <div class="admin-queue-view__cell admin-queue-view__cell--head" role="columnheader">
-              Attempts
-            </div>
-            <div class="admin-queue-view__cell admin-queue-view__cell--head" role="columnheader">
-              Worker
-            </div>
-            <div class="admin-queue-view__cell admin-queue-view__cell--head" role="columnheader">
-              Available
-            </div>
-            <div class="admin-queue-view__cell admin-queue-view__cell--head" role="columnheader">
-              Updated
-            </div>
-            <div class="admin-queue-view__cell admin-queue-view__cell--head" role="columnheader">
-              Error
-            </div>
-          </div>
 
-          <div
-            v-for="job in queue.jobs"
-            :key="job.id"
-            class="admin-queue-view__row"
-            role="row"
-            :data-testid="`queue-row-${job.id}`"
-          >
-            <div class="admin-queue-view__cell admin-queue-view__job-id" role="cell">
-              {{ job.id }}
+        <p v-if="actionError" class="admin-queue__status admin-queue__status--error">
+          {{ actionError }}
+        </p>
+        <p v-else-if="actionNotice" class="admin-queue__status admin-queue__status--success">
+          {{ actionNotice }}
+        </p>
+        <p v-if="loading" class="admin-queue__status">Loading queue…</p>
+        <p v-else-if="error" class="admin-queue__status">{{ error }}</p>
+        <p v-else-if="!queue || queue.jobs.length === 0" class="admin-queue__status">
+          No recent jobs.
+        </p>
+        <div v-else class="admin-queue__jobs">
+          <div class="admin-queue__summary">
+            <span>{{ queueStats.total }} jobs</span>
+            <span>{{ queueStats.running }} running</span>
+            <span>{{ queueStats.queued }} queued</span>
+          </div>
+          <div class="admin-queue__table" role="table" aria-label="Queue jobs">
+            <div class="admin-queue__row admin-queue__row--head" role="row">
+              <div class="admin-queue__cell admin-queue__cell--head" role="columnheader">
+                Job
+              </div>
+              <div class="admin-queue__cell admin-queue__cell--head" role="columnheader">
+                Status
+              </div>
+              <div class="admin-queue__cell admin-queue__cell--head" role="columnheader">
+                Submission
+              </div>
+              <div class="admin-queue__cell admin-queue__cell--head" role="columnheader">
+                User
+              </div>
+              <div class="admin-queue__cell admin-queue__cell--head" role="columnheader">
+                Attempts
+              </div>
+              <div class="admin-queue__cell admin-queue__cell--head" role="columnheader">
+                Worker
+              </div>
+              <div class="admin-queue__cell admin-queue__cell--head" role="columnheader">
+                Available
+              </div>
+              <div class="admin-queue__cell admin-queue__cell--head" role="columnheader">
+                Updated
+              </div>
+              <div class="admin-queue__cell admin-queue__cell--head" role="columnheader">
+                Error
+              </div>
             </div>
-            <div class="admin-queue-view__cell" role="cell">
-              <VerdictBadge :value="job.status" />
-            </div>
-            <div class="admin-queue-view__cell" role="cell">
-              {{ job.submission_id }}
-            </div>
-            <div class="admin-queue-view__cell" role="cell">{{ job.user_id }}</div>
-            <div class="admin-queue-view__cell admin-queue-view__number" role="cell">
-              {{ job.attempts }}
-            </div>
-            <div class="admin-queue-view__cell admin-queue-view__mono" role="cell">
-              {{ job.worker_id || '—' }}
-            </div>
-            <div class="admin-queue-view__cell admin-queue-view__mono" role="cell">
-              {{ formatTime(job.available_at) }}
-            </div>
-            <div class="admin-queue-view__cell admin-queue-view__mono" role="cell">
-              {{ formatTime(job.updated_at) }}
-            </div>
-            <div class="admin-queue-view__cell" role="cell">
-              <details
-                v-if="job.last_error"
-                class="admin-queue-view__error-details"
-                :data-testid="`job-${job.id}-error`"
-              >
-                <summary class="admin-queue-view__error-summary">Last error</summary>
-                <pre class="admin-queue-view__error">{{ job.last_error }}</pre>
-              </details>
-              <span v-else class="admin-queue-view__empty">—</span>
+
+            <div
+              v-for="job in queue.jobs"
+              :key="job.id"
+              class="admin-queue__row"
+              role="row"
+              :data-testid="`queue-row-${job.id}`"
+            >
+              <div class="admin-queue__cell admin-queue__job-id" role="cell">
+                {{ job.id }}
+              </div>
+              <div class="admin-queue__cell" role="cell">
+                <VerdictBadge :value="job.status" />
+              </div>
+              <div class="admin-queue__cell" role="cell">
+                {{ job.submission_id }}
+              </div>
+              <div class="admin-queue__cell" role="cell">{{ job.user_id }}</div>
+              <div class="admin-queue__cell admin-queue__number" role="cell">
+                {{ job.attempts }}
+              </div>
+              <div class="admin-queue__cell admin-queue__mono" role="cell">
+                {{ job.worker_id || '—' }}
+              </div>
+              <div class="admin-queue__cell admin-queue__mono" role="cell">
+                {{ formatTime(job.available_at) }}
+              </div>
+              <div class="admin-queue__cell admin-queue__mono" role="cell">
+                {{ formatTime(job.updated_at) }}
+              </div>
+              <div class="admin-queue__cell" role="cell">
+                <details
+                  v-if="job.last_error"
+                  class="admin-queue__error-details"
+                  :data-testid="`job-${job.id}-error`"
+                >
+                  <summary class="admin-queue__error-summary">Last error</summary>
+                  <pre class="admin-queue__error">{{ job.last_error }}</pre>
+                </details>
+                <span v-else class="admin-queue__empty">—</span>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </section>
-  </main>
+    </div>
+  </AdminShell>
 </template>
 
 <style scoped>
-.admin-queue-view {
+.admin-queue {
   display: grid;
   gap: 20px;
 }
 
-.admin-queue-view__header {
+.admin-queue__breadcrumb {
   display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.admin-queue-view__header-copy {
-  display: grid;
-  gap: 8px;
-}
-
-.admin-queue-view__header h1,
-.admin-queue-view__meta,
-.admin-queue-view__lab {
-  margin: 0;
-}
-
-.admin-queue-view__header h1 {
-  font-family: var(--font-mono);
-  font-size: 1.7rem;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-}
-
-.admin-queue-view__meta,
-.admin-queue-view__lab {
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  margin-bottom: 16px;
 }
 
-.admin-queue-view__panel {
+.admin-queue__breadcrumb-link {
+  color: var(--accent-strong);
+  text-decoration: none;
+}
+
+.admin-queue__breadcrumb-link:hover { text-decoration: underline; }
+
+.admin-queue__breadcrumb-sep { color: var(--border-strong); }
+
+.admin-queue__breadcrumb-lab {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.admin-queue__panel {
   display: grid;
   gap: 14px;
   padding: 24px;
@@ -349,35 +333,26 @@ onMounted(() => {
   background: var(--bg-surface);
 }
 
-.admin-queue-view__lab {
-  margin: 0;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-weight: 600;
-  font-size: 0.78rem;
-  text-transform: uppercase;
-}
-
-.admin-queue-view__status {
+.admin-queue__status {
   margin: 0;
   color: var(--muted);
 }
 
-.admin-queue-view__status--error {
+.admin-queue__status--error {
   color: var(--danger);
 }
 
-.admin-queue-view__status--success {
+.admin-queue__status--success {
   color: var(--accent-strong);
 }
 
-.admin-queue-view__actions {
+.admin-queue__actions {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
 }
 
-.admin-queue-view__summary {
+.admin-queue__summary {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
@@ -388,23 +363,23 @@ onMounted(() => {
   text-transform: uppercase;
 }
 
-.admin-queue-view__jobs {
+.admin-queue__jobs {
   display: grid;
   gap: 14px;
 }
 
-.admin-queue-view__error {
+.admin-queue__error {
   margin: 0;
 }
 
-.admin-queue-view__table {
+.admin-queue__table {
   border: 1px solid var(--border-default);
   border-radius: 10px;
   overflow: hidden;
   background: var(--bg-elevated);
 }
 
-.admin-queue-view__row {
+.admin-queue__row {
   display: grid;
   grid-template-columns: 1.2fr 0.8fr 1fr 0.6fr 0.6fr 1fr 1.1fr 1.1fr 1.2fr;
   align-items: start;
@@ -413,19 +388,19 @@ onMounted(() => {
   border-top: 1px solid var(--border-default);
 }
 
-.admin-queue-view__row:first-child {
+.admin-queue__row:first-child {
   border-top: none;
 }
 
-.admin-queue-view__row--head {
+.admin-queue__row--head {
   background: var(--bg-surface);
 }
 
-.admin-queue-view__row:not(.admin-queue-view__row--head):hover {
+.admin-queue__row:not(.admin-queue__row--head):hover {
   background: color-mix(in srgb, var(--bg-elevated) 92%, var(--bg-root));
 }
 
-.admin-queue-view__cell {
+.admin-queue__cell {
   min-width: 0;
   font-family: var(--font-mono);
   font-size: 0.86rem;
@@ -433,7 +408,7 @@ onMounted(() => {
   overflow-wrap: anywhere;
 }
 
-.admin-queue-view__cell--head {
+.admin-queue__cell--head {
   color: var(--text-tertiary);
   font-size: 0.68rem;
   font-weight: 600;
@@ -441,29 +416,29 @@ onMounted(() => {
   text-transform: uppercase;
 }
 
-.admin-queue-view__job-id {
+.admin-queue__job-id {
   font-family: var(--font-mono);
   font-size: 0.9rem;
   font-weight: 600;
 }
 
-.admin-queue-view__mono {
+.admin-queue__mono {
   color: var(--text-secondary);
 }
 
-.admin-queue-view__number {
+.admin-queue__number {
   text-align: right;
 }
 
-.admin-queue-view__empty {
+.admin-queue__empty {
   color: var(--text-tertiary);
 }
 
-.admin-queue-view__error-details {
+.admin-queue__error-details {
   color: var(--danger);
 }
 
-.admin-queue-view__error-summary {
+.admin-queue__error-summary {
   cursor: pointer;
   font-size: 0.72rem;
   font-weight: 600;
@@ -472,28 +447,28 @@ onMounted(() => {
   list-style: none;
 }
 
-.admin-queue-view__error-summary:focus-visible {
+.admin-queue__error-summary:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
   border-radius: 8px;
 }
 
-.admin-queue-view__error-summary::-webkit-details-marker {
+.admin-queue__error-summary::-webkit-details-marker {
   display: none;
 }
 
-.admin-queue-view__error-summary::before {
+.admin-queue__error-summary::before {
   content: '▸';
   display: inline-block;
   margin-right: 8px;
   transform: translateY(-0.5px);
 }
 
-.admin-queue-view__error-details[open] > .admin-queue-view__error-summary::before {
+.admin-queue__error-details[open] > .admin-queue__error-summary::before {
   content: '▾';
 }
 
-.admin-queue-view__error {
+.admin-queue__error {
   color: var(--danger);
   font-family: var(--font-mono);
   font-size: 0.8rem;
@@ -508,17 +483,12 @@ onMounted(() => {
 }
 
 @media (max-width: 767px) {
-  .admin-queue-view__header {
-    flex-direction: column;
-    align-items: start;
-  }
-
-  .admin-queue-view__row {
+  .admin-queue__row {
     grid-template-columns: 1fr;
     gap: 10px;
   }
 
-  .admin-queue-view__row--head {
+  .admin-queue__row--head {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -530,7 +500,7 @@ onMounted(() => {
     border: 0;
   }
 
-  .admin-queue-view__number {
+  .admin-queue__number {
     text-align: left;
   }
 }

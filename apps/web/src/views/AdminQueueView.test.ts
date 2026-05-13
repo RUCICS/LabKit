@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApp, nextTick } from 'vue';
+import { createMemoryHistory, createRouter } from 'vue-router';
 import AdminQueueView from './AdminQueueView.vue';
 
 async function flush() {
@@ -18,10 +19,22 @@ function jsonResponse(payload: unknown, status = 200) {
 }
 
 async function mountQueue(url = '/admin/labs/sorting/queue') {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/admin/login', name: 'admin-login', component: { template: '<div>login</div>' } },
+      { path: '/admin/labs', name: 'admin-labs', component: { template: '<div>labs</div>' } },
+      { path: '/admin/labs/:labID/queue', name: 'admin-queue', component: AdminQueueView }
+    ]
+  });
+  await router.push(url);
+  await router.isReady();
+  window.history.pushState({}, '', url);
+
   const el = document.createElement('div');
   document.body.appendChild(el);
-  window.history.pushState({}, '', url);
   const app = createApp(AdminQueueView);
+  app.use(router);
   app.mount(el);
   await flush();
   return {

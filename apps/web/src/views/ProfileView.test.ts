@@ -26,6 +26,33 @@ async function mountView(component: any, url = '/') {
   };
 }
 
+async function mountAdminQueueView(url = '/admin/labs/sorting/queue') {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: '/admin/login', name: 'admin-login', component: { template: '<div>login</div>' } },
+      { path: '/admin/labs', name: 'admin-labs', component: { template: '<div>labs</div>' } },
+      { path: '/admin/labs/:labID/queue', name: 'admin-queue', component: AdminQueueView }
+    ]
+  });
+  await router.push(url);
+  await router.isReady();
+  window.history.pushState({}, '', url);
+
+  const el = document.createElement('div');
+  document.body.appendChild(el);
+  const app = createApp(AdminQueueView);
+  app.use(router);
+  app.mount(el);
+  await flush();
+  return {
+    unmount() {
+      app.unmount();
+      el.remove();
+    }
+  };
+}
+
 async function mountProfileView(url = '/profile') {
   const el = document.createElement('div');
   document.body.appendChild(el);
@@ -249,9 +276,9 @@ describe('AdminQueueView', () => {
       )
     );
 
-    const view = await mountView(AdminQueueView, '/admin/labs/sorting/queue');
+    const view = await mountAdminQueueView('/admin/labs/sorting/queue');
 
-    expect(document.body.textContent).toContain('Queue status');
+    expect(document.body.textContent).toContain('Queue');
     expect(document.body.textContent).toContain('running');
     expect(document.body.textContent).toContain('queued');
 
@@ -268,7 +295,7 @@ describe('AdminQueueView', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const view = await mountView(AdminQueueView, '/admin/labs/sorting/queue');
+    const view = await mountAdminQueueView('/admin/labs/sorting/queue');
 
     const [, init] = fetchMock.mock.calls[0] ?? [];
     expect(fetchMock).toHaveBeenCalledWith('/api/admin/labs/sorting/queue', expect.any(Object));
@@ -287,6 +314,17 @@ describe('AdminQueueView', () => {
       .mockImplementationOnce(async () => second.promise);
     vi.stubGlobal('fetch', fetchMock);
 
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/admin/login', name: 'admin-login', component: { template: '<div>login</div>' } },
+        { path: '/admin/labs', name: 'admin-labs', component: { template: '<div>labs</div>' } },
+        { path: '/admin/labs/:labID/queue', name: 'admin-queue', component: AdminQueueView }
+      ]
+    });
+    await router.push('/admin/labs/sorting/queue');
+    await router.isReady();
+
     const labId = ref('sorting');
     const Root = defineComponent({
       setup() {
@@ -297,6 +335,7 @@ describe('AdminQueueView', () => {
     const el = document.createElement('div');
     document.body.appendChild(el);
     const app = createApp(Root);
+    app.use(router);
     app.mount(el);
     await flush();
 
