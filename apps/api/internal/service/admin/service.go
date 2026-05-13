@@ -69,6 +69,12 @@ type ReevaluateResult struct {
 	JobsCreated int    `json:"jobs_created"`
 }
 
+type GetLabResult struct {
+	ID       string             `json:"id"`
+	Name     string             `json:"name"`
+	Manifest *manifest.Manifest `json:"manifest"`
+}
+
 type QueueStatus struct {
 	LabID string     `json:"lab_id"`
 	Jobs  []QueueJob `json:"jobs"`
@@ -264,6 +270,22 @@ func (s *Service) QueueStatus(ctx context.Context, labID string) (QueueStatus, e
 		})
 	}
 	return result, nil
+}
+
+func (s *Service) GetLab(ctx context.Context, labID string) (GetLabResult, error) {
+	labRow, err := s.loadLabRow(ctx, labID)
+	if err != nil {
+		return GetLabResult{}, err
+	}
+	parsed, err := parseStoredManifest(labRow.Manifest)
+	if err != nil {
+		return GetLabResult{}, err
+	}
+	return GetLabResult{
+		ID:       labRow.ID,
+		Name:     labRow.Name,
+		Manifest: parsed,
+	}, nil
 }
 
 func (s *Service) loadLab(ctx context.Context, labID string) (sqlc.Labs, *manifest.Manifest, error) {

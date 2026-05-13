@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"reflect"
 	"testing"
 	"time"
@@ -242,6 +243,39 @@ func TestQueueStatusIgnoresMalformedManifest(t *testing.T) {
 	}
 	if result.LabID != "sorting" {
 		t.Fatalf("lab_id = %q, want %q", result.LabID, "sorting")
+	}
+}
+
+func TestGetLabReturnsFullManifest(t *testing.T) {
+	repo := newAdminTestRepo(t)
+	svc := NewService(repo)
+
+	result, err := svc.GetLab(context.Background(), "sorting")
+	if err != nil {
+		t.Fatalf("GetLab() error = %v", err)
+	}
+	if result.ID != "sorting" {
+		t.Fatalf("id = %q, want %q", result.ID, "sorting")
+	}
+	if result.Name != "Sorting Lab" {
+		t.Fatalf("name = %q, want %q", result.Name, "Sorting Lab")
+	}
+	if result.Manifest == nil {
+		t.Fatal("manifest = nil, want non-nil")
+	}
+	// eval.image must be present (not redacted)
+	if result.Manifest.Eval.Image == "" {
+		t.Fatal("eval.image = empty, want non-empty (full manifest)")
+	}
+}
+
+func TestGetLabNotFound(t *testing.T) {
+	repo := newAdminTestRepo(t)
+	svc := NewService(repo)
+
+	_, err := svc.GetLab(context.Background(), "nonexistent")
+	if !errors.Is(err, ErrLabNotFound) {
+		t.Fatalf("GetLab() error = %v, want ErrLabNotFound", err)
 	}
 }
 
