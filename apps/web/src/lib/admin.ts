@@ -1,18 +1,36 @@
 export const adminTokenStorageKey = 'labkit_admin_token';
 
-export function readAdminToken() {
-  return (window.sessionStorage.getItem(adminTokenStorageKey) ?? '').trim();
+export function readAdminToken(): string {
+  return (
+    window.sessionStorage.getItem(adminTokenStorageKey) ??
+    window.localStorage.getItem(adminTokenStorageKey) ??
+    ''
+  ).trim();
 }
 
-export function writeAdminToken(token: string) {
+/** Store token in sessionStorage (clears on tab close). Default for login. */
+export function sessionToken(token: string): void {
   const value = token.trim();
-  if (!value) {
-    return;
-  }
+  if (!value) return;
   window.sessionStorage.setItem(adminTokenStorageKey, value);
+  window.localStorage.removeItem(adminTokenStorageKey);
 }
 
-export function authorizedAdminHeaders(init?: HeadersInit) {
+/** Store token in localStorage (persists across browser restarts). */
+export function rememberToken(token: string): void {
+  const value = token.trim();
+  if (!value) return;
+  window.localStorage.setItem(adminTokenStorageKey, value);
+  window.sessionStorage.removeItem(adminTokenStorageKey);
+}
+
+/** Remove token from both storages. */
+export function clearAdminToken(): void {
+  window.sessionStorage.removeItem(adminTokenStorageKey);
+  window.localStorage.removeItem(adminTokenStorageKey);
+}
+
+export function authorizedAdminHeaders(init?: HeadersInit): Headers {
   const headers = new Headers(init);
   const token = readAdminToken();
   if (token) {
@@ -21,7 +39,7 @@ export function authorizedAdminHeaders(init?: HeadersInit) {
   return headers;
 }
 
-export async function readAPIError(response: Response, fallback: string) {
+export async function readAPIError(response: Response, fallback: string): Promise<string> {
   try {
     const payload = (await response.json()) as {
       error?: { message?: string };
@@ -36,9 +54,7 @@ export async function readAPIError(response: Response, fallback: string) {
   } catch {
     try {
       const text = await response.text();
-      if (text.trim() !== '') {
-        return text.trim();
-      }
+      if (text.trim() !== '') return text.trim();
     } catch {
       return fallback;
     }
@@ -46,10 +62,8 @@ export async function readAPIError(response: Response, fallback: string) {
   return fallback;
 }
 
-export function fileNameFromDisposition(disposition: string | null, fallback: string) {
-  if (!disposition) {
-    return fallback;
-  }
+export function fileNameFromDisposition(disposition: string | null, fallback: string): string {
+  if (!disposition) return fallback;
   const match = disposition.match(/filename="?([^"]+)"?/i);
   return match?.[1]?.trim() || fallback;
 }
