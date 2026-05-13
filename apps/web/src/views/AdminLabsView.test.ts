@@ -76,6 +76,41 @@ describe('AdminLabsView', () => {
     el.remove();
   });
 
+  it('opens new-lab drawer when + New lab is clicked', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(labsPayload)));
+    window.sessionStorage.setItem(adminTokenStorageKey, 'secret');
+
+    const router = mountLabsView();
+    await router.push('/admin/labs');
+    await router.isReady();
+
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    const app = createApp(AdminLabsView);
+    app.use(router);
+    app.mount(el);
+    await flush();
+
+    const newLabBtn = Array.from(document.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('New lab')
+    );
+    expect(newLabBtn).toBeDefined();
+    newLabBtn!.click();
+    await flush();
+
+    const drawer = document.querySelector('[data-testid="lab-edit-drawer"]');
+    expect(drawer).not.toBeNull();
+    // creation mode: shows "Create lab" save button, not "Save changes"
+    expect(drawer!.textContent).toContain('New lab');
+    const createBtn = Array.from(document.querySelectorAll('button')).find((b) =>
+      b.textContent?.trim() === 'Create lab'
+    );
+    expect(createBtn).toBeDefined();
+
+    app.unmount();
+    el.remove();
+  });
+
   it('opens the edit drawer when Edit is clicked', async () => {
     vi.stubGlobal(
       'fetch',
