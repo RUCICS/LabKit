@@ -86,6 +86,7 @@ func (h *AdminHandler) GetLabDetail(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", http.StatusText(http.StatusInternalServerError))
 		return
 	}
+
 	result, err := h.Service.GetLab(r.Context(), r.PathValue("labID"))
 	if err != nil {
 		h.writeError(w, r, err)

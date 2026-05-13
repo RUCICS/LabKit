@@ -128,6 +128,37 @@ func TestAdminRoutesRejectMissingAuth(t *testing.T) {
 	}
 }
 
+func TestAdminHandlerGetLabDetail(t *testing.T) {
+	router := NewRouter(
+		WithAdminToken("secret"),
+		WithAdminService(&fakeAdminService{
+			lab: adminsvc.GetLabResult{
+				ID:   "sorting",
+				Name: "Sorting Challenge",
+			},
+		}),
+	)
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/labs/sorting", nil)
+	req.SetPathValue("labID", "sorting")
+	req.Header.Set("Authorization", "Bearer secret")
+
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+
+	var labPayload adminsvc.GetLabResult
+	if err := json.Unmarshal(rr.Body.Bytes(), &labPayload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if labPayload.ID != "sorting" {
+		t.Fatalf("id = %q, want %q", labPayload.ID, "sorting")
+	}
+}
+
 type fakeAdminService struct {
 	export adminsvc.ExportGradesResult
 	reeval adminsvc.ReevaluateResult
