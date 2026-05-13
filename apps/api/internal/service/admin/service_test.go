@@ -279,6 +279,21 @@ func TestGetLabNotFound(t *testing.T) {
 	}
 }
 
+func TestGetLabMalformedManifest(t *testing.T) {
+	repo := newAdminTestRepo(t)
+	repo.labs["sorting"] = sqlc.Labs{
+		ID:       "sorting",
+		Name:     "Sorting Lab",
+		Manifest: json.RawMessage(`{"broken":`),
+	}
+	svc := NewService(repo)
+
+	_, err := svc.GetLab(context.Background(), "sorting")
+	if err == nil {
+		t.Fatal("GetLab() error = nil, want non-nil error for malformed manifest")
+	}
+}
+
 type adminTestRepo struct {
 	labs                 map[string]sqlc.Labs
 	leaderboard          map[string][]sqlc.Leaderboard
