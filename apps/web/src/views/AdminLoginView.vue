@@ -9,6 +9,7 @@ const error = ref('');
 const router = useRouter();
 
 function submit() {
+  error.value = '';
   const value = token.value.trim();
   if (!value) {
     error.value = 'Token is required.';

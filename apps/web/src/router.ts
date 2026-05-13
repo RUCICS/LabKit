@@ -89,7 +89,7 @@ router.beforeEach((to) => {
   if (!to.path.startsWith('/admin')) return;
   if (to.name === 'admin-login') return;
 
-  // ?token=xxx shortcut: store and strip from URL
+  // ?token=xxx shortcut: store as session-only (don't persist URL-delivered tokens) and strip from URL
   if (typeof to.query.token === 'string' && to.query.token.trim() !== '') {
     sessionToken(to.query.token.trim());
     const { token: _removed, ...rest } = to.query;
