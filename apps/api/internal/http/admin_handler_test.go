@@ -132,6 +132,7 @@ type fakeAdminService struct {
 	export adminsvc.ExportGradesResult
 	reeval adminsvc.ReevaluateResult
 	queue  adminsvc.QueueStatus
+	lab    adminsvc.GetLabResult
 }
 
 func (f *fakeAdminService) ExportGrades(context.Context, string) (adminsvc.ExportGradesResult, error) {
@@ -144,4 +145,8 @@ func (f *fakeAdminService) Reevaluate(context.Context, string) (adminsvc.Reevalu
 
 func (f *fakeAdminService) QueueStatus(context.Context, string) (adminsvc.QueueStatus, error) {
 	return f.queue, nil
+}
+
+func (f *fakeAdminService) GetLab(context.Context, string) (adminsvc.GetLabResult, error) {
+	return f.lab, nil
 }

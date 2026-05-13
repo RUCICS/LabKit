@@ -16,6 +16,7 @@ type AdminService interface {
 	ExportGrades(context.Context, string) (adminsvc.ExportGradesResult, error)
 	Reevaluate(context.Context, string) (adminsvc.ReevaluateResult, error)
 	QueueStatus(context.Context, string) (adminsvc.QueueStatus, error)
+	GetLab(context.Context, string) (adminsvc.GetLabResult, error)
 }
 
 type AdminHandler struct {
@@ -73,6 +74,19 @@ func (h *AdminHandler) GetQueueStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.Service.QueueStatus(r.Context(), r.PathValue("labID"))
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *AdminHandler) GetLabDetail(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.Service == nil {
+		middleware.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", http.StatusText(http.StatusInternalServerError))
+		return
+	}
+	result, err := h.Service.GetLab(r.Context(), r.PathValue("labID"))
 	if err != nil {
 		h.writeError(w, r, err)
 		return
