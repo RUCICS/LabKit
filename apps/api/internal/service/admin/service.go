@@ -38,7 +38,7 @@ type Repository interface {
 
 type Tx interface {
 	ListLeaderboardByLab(context.Context, string) ([]sqlc.Leaderboard, error)
-	CreateSubmission(context.Context, sqlc.CreateSubmissionParams) (sqlc.Submissions, error)
+	CreateFreeSubmission(context.Context, sqlc.CreateFreeSubmissionParams) (sqlc.Submissions, error)
 	CreateEvaluationJob(context.Context, uuid.UUID) (sqlc.EvaluationJobs, error)
 	Commit(context.Context) error
 	Rollback(context.Context) error
@@ -200,7 +200,7 @@ func (s *Service) Reevaluate(ctx context.Context, labID string) (ReevaluateResul
 		if err != nil {
 			return ReevaluateResult{}, err
 		}
-		createdSubmission, err := tx.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
+		createdSubmission, err := tx.CreateFreeSubmission(ctx, sqlc.CreateFreeSubmissionParams{
 			UserID:      submission.UserID,
 			LabID:       submission.LabID,
 			KeyID:       submission.KeyID,

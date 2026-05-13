@@ -111,17 +111,17 @@ func TestReevaluateCreatesFreshJobsForCurrentLeaderboardState(t *testing.T) {
 	if repo.tx.listLeaderboardCalls != 1 {
 		t.Fatalf("tx leaderboard calls = %d, want 1", repo.tx.listLeaderboardCalls)
 	}
-	if got := len(repo.tx.createdSubmissions); got != 2 {
+	if got := len(repo.tx.createdFreeSubmissions); got != 2 {
 		t.Fatalf("created submissions = %d, want 2", got)
 	}
 	if got := len(repo.tx.createdJobs); got != 2 {
 		t.Fatalf("created jobs = %d, want 2", got)
 	}
-	if repo.tx.createdSubmissions[0].ArtifactKey != "sorting/7/11111111-1111-7111-8111-111111111111.tar.gz" {
-		t.Fatalf("artifact key = %q, want %q", repo.tx.createdSubmissions[0].ArtifactKey, "sorting/7/11111111-1111-7111-8111-111111111111.tar.gz")
+	if repo.tx.createdFreeSubmissions[0].ArtifactKey != "sorting/7/11111111-1111-7111-8111-111111111111.tar.gz" {
+		t.Fatalf("artifact key = %q, want %q", repo.tx.createdFreeSubmissions[0].ArtifactKey, "sorting/7/11111111-1111-7111-8111-111111111111.tar.gz")
 	}
-	if repo.tx.createdSubmissions[0].Status != "queued" {
-		t.Fatalf("submission status = %q, want %q", repo.tx.createdSubmissions[0].Status, "queued")
+	if repo.tx.createdFreeSubmissions[0].Status != "queued" {
+		t.Fatalf("submission status = %q, want %q", repo.tx.createdFreeSubmissions[0].Status, "queued")
 	}
 }
 
@@ -190,6 +190,22 @@ func TestQueueStatusOrdersByRecentActivity(t *testing.T) {
 	}
 	if got := result.Jobs[1].ID; got != "aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa" {
 		t.Fatalf("second job id = %q, want %q", got, "aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa")
+	}
+}
+
+func TestReevaluateSubmissionsHaveFreeQuotaState(t *testing.T) {
+	repo := newAdminTestRepo(t)
+	svc := NewService(repo)
+
+	_, err := svc.Reevaluate(context.Background(), "sorting")
+	if err != nil {
+		t.Fatalf("Reevaluate() error = %v", err)
+	}
+	if len(repo.tx.createdFreeSubmissions) != 2 {
+		t.Fatalf("created free submissions = %d, want 2", len(repo.tx.createdFreeSubmissions))
+	}
+	if len(repo.tx.createdSubmissions) != 0 {
+		t.Fatalf("charged submissions = %d, want 0 (reeval must not use charged quota)", len(repo.tx.createdSubmissions))
 	}
 }
 
@@ -445,12 +461,13 @@ func timestamptz(iso string) pgtype.Timestamptz {
 }
 
 type adminTestTx struct {
-	createdSubmissions   []sqlc.CreateSubmissionParams
-	createdJobs          []uuid.UUID
-	commitCalls          int
-	rollbackCalls        int
-	nextSubmissionID     uuid.UUID
-	listLeaderboardCalls int
+	createdSubmissions     []sqlc.CreateSubmissionParams     // kept to detect accidental use
+	createdFreeSubmissions []sqlc.CreateFreeSubmissionParams
+	createdJobs            []uuid.UUID
+	commitCalls            int
+	rollbackCalls          int
+	nextSubmissionID       uuid.UUID
+	listLeaderboardCalls   int
 }
 
 func (tx *adminTestTx) ListLeaderboardByLab(_ context.Context, labID string) ([]sqlc.Leaderboard, error) {
@@ -522,8 +539,8 @@ func (r *adminTestRepo) BeginTx(context.Context) (Tx, error) {
 	return r.tx, nil
 }
 
-func (tx *adminTestTx) CreateSubmission(_ context.Context, arg sqlc.CreateSubmissionParams) (sqlc.Submissions, error) {
-	tx.createdSubmissions = append(tx.createdSubmissions, arg)
+func (tx *adminTestTx) CreateFreeSubmission(_ context.Context, arg sqlc.CreateFreeSubmissionParams) (sqlc.Submissions, error) {
+	tx.createdFreeSubmissions = append(tx.createdFreeSubmissions, arg)
 	id := tx.nextSubmissionID
 	if id == uuid.Nil {
 		id = uuid.MustParse("cccccccc-cccc-7ccc-8ccc-cccccccccccc")

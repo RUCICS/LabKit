@@ -68,8 +68,8 @@ func (tx *storeTx) ListLeaderboardByLab(ctx context.Context, labID string) ([]sq
 	return tx.store.ListLeaderboardByLab(ctx, labID)
 }
 
-func (tx *storeTx) CreateSubmission(ctx context.Context, arg sqlc.CreateSubmissionParams) (sqlc.Submissions, error) {
-	return tx.store.CreateSubmission(ctx, arg)
+func (tx *storeTx) CreateFreeSubmission(ctx context.Context, arg sqlc.CreateFreeSubmissionParams) (sqlc.Submissions, error) {
+	return tx.store.CreateFreeSubmission(ctx, arg)
 }
 
 func (tx *storeTx) CreateEvaluationJob(ctx context.Context, submissionID uuid.UUID) (sqlc.EvaluationJobs, error) {
