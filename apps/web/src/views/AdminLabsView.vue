@@ -34,11 +34,6 @@ function openEdit(labId: string) {
   drawerOpen.value = true;
 }
 
-function openNew() {
-  drawerLabId.value = null;
-  drawerOpen.value = true;
-}
-
 function onDrawerClose() {
   drawerOpen.value = false;
 }
@@ -58,10 +53,7 @@ onMounted(() => void loadLabs());
 <template>
   <AdminShell>
     <div class="admin-labs" data-testid="admin-labs">
-      <div class="admin-labs__header">
-        <h1 class="admin-labs__title">Labs</h1>
-        <button type="button" class="button" @click="openNew">+ New lab</button>
-      </div>
+      <h1 class="admin-labs__title">Labs</h1>
 
       <p v-if="loading" class="admin-labs__status">Loading…</p>
       <p v-else-if="error" class="admin-labs__status admin-labs__status--error">{{ error }}</p>
@@ -102,12 +94,6 @@ onMounted(() => void loadLabs());
   display: flex;
   flex-direction: column;
   gap: 20px;
-}
-
-.admin-labs__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
 }
 
 .admin-labs__title {
