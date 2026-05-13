@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -441,5 +442,73 @@ close = 2026-04-15T23:59:59+08:00
 	}
 	if pub.Eval.Timeout != 123 {
 		t.Fatalf("public eval timeout = %d, want 123", pub.Eval.Timeout)
+	}
+}
+
+func TestParseAcceptsJSON(t *testing.T) {
+	// A valid manifest first parsed from TOML, then marshaled to JSON.
+	// Parse() must accept the JSON form back.
+	tomlInput := []byte(`
+[lab]
+id = "json-test-2026"
+name = "JSON Test"
+
+[submit]
+files = ["main.c"]
+max_size = "2MB"
+
+[eval]
+image = "registry.example.edu/test:latest"
+timeout = 120
+
+[quota]
+daily = 5
+
+[[metric]]
+id = "score"
+name = "Score"
+sort = "desc"
+unit = "pts"
+
+[board]
+rank_by = "score"
+pick = false
+
+[schedule]
+open = 2026-03-01T00:00:00Z
+close = 2026-06-30T00:00:00Z
+`)
+	orig, err := Parse(tomlInput)
+	if err != nil {
+		t.Fatalf("Parse(TOML) error = %v", err)
+	}
+	jsonBytes, err := json.Marshal(orig)
+	if err != nil {
+		t.Fatalf("json.Marshal error = %v", err)
+	}
+
+	got, err := Parse(jsonBytes)
+	if err != nil {
+		t.Fatalf("Parse(JSON) error = %v", err)
+	}
+	if got.Lab.ID != "json-test-2026" {
+		t.Fatalf("lab.id = %q, want %q", got.Lab.ID, "json-test-2026")
+	}
+	if got.Eval.Image != "registry.example.edu/test:latest" {
+		t.Fatalf("eval.image = %q, want %q", got.Eval.Image, "registry.example.edu/test:latest")
+	}
+	if got.Metrics[0].ID != "score" {
+		t.Fatalf("metric[0].id = %q, want %q", got.Metrics[0].ID, "score")
+	}
+	if got.Submit.MaxSize != "2MB" {
+		t.Fatalf("submit.max_size = %q, want %q", got.Submit.MaxSize, "2MB")
+	}
+}
+
+func TestParseJSONRejectsInvalidManifest(t *testing.T) {
+	bad := []byte(`{"Lab":{"ID":"","Name":""},"Submit":{"Files":[],"MaxSize":""},"Eval":{"Image":"","Timeout":0},"Quota":{"Daily":0,"Free":[]},"Metrics":[],"Board":{"RankBy":"","Pick":false},"Schedule":{}}`)
+	_, err := Parse(bad)
+	if err == nil {
+		t.Fatal("Parse(bad JSON) error = nil, want validation error")
 	}
 }

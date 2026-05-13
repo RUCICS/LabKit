@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -74,9 +75,30 @@ type ScheduleSection struct {
 }
 
 // Parse decodes, normalizes, and validates a manifest.
+// Accepts both TOML and JSON (detected by leading '{').
 func Parse(data []byte) (*Manifest, error) {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) > 0 && trimmed[0] == '{' {
+		return parseJSON(data)
+	}
+	return parseTOML(data)
+}
+
+func parseTOML(data []byte) (*Manifest, error) {
 	var m Manifest
 	if _, err := toml.NewDecoder(bytes.NewReader(data)).Decode(&m); err != nil {
+		return nil, fmt.Errorf("parse manifest: %w", err)
+	}
+	m.normalize()
+	if err := m.Validate(); err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
+func parseJSON(data []byte) (*Manifest, error) {
+	var m Manifest
+	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("parse manifest: %w", err)
 	}
 	m.normalize()
