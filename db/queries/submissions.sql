@@ -100,3 +100,10 @@ SELECT *
 FROM scores
 WHERE submission_id = $1
 ORDER BY metric_id;
+
+-- name: AdminResetLabQuotaToday :execrows
+UPDATE submissions
+SET quota_state = 'admin_reset'
+WHERE lab_id = $1
+  AND created_at >= $2
+  AND quota_state IN ('pending', 'charged');
