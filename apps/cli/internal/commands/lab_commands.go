@@ -175,10 +175,15 @@ type submissionScoreItem struct {
 }
 
 type quotaSummaryResponse struct {
-	Daily     int    `json:"daily"`
-	Used      int    `json:"used"`
-	Left      int    `json:"left"`
-	ResetHint string `json:"reset_hint"`
+	Daily     int                   `json:"daily"`
+	Used      int                   `json:"used"`
+	Left      int                   `json:"left"`
+	ResetHint string                `json:"reset_hint"`
+	Bonus     *bonusSummaryResponse `json:"bonus,omitempty"`
+}
+
+type bonusSummaryResponse struct {
+	Remaining int `json:"remaining"`
 }
 
 type latestSubmissionHintResponse struct {
@@ -1497,8 +1502,19 @@ func renderQuotaSummary(out io.Writer, quota *quotaSummaryResponse, freeVerdict 
 		return err
 	}
 	line := fmt.Sprintf("Quota  %d left today · %s", quota.Left, detail)
-	_, err := fmt.Fprintln(out, "  "+theme.MutedStyle.Render(line))
-	return err
+	if quota.Bonus != nil && quota.Bonus.Remaining > 0 {
+		line += fmt.Sprintf(" · %d bonus left", quota.Bonus.Remaining)
+	}
+	if _, err := fmt.Fprintln(out, "  "+theme.MutedStyle.Render(line)); err != nil {
+		return err
+	}
+	if quota.Left <= 0 && quota.Bonus != nil && quota.Bonus.Remaining > 0 && strings.TrimSpace(freeVerdict) == "" {
+		hint := fmt.Sprintf("Daily quota exhausted — next submission will spend 1 bonus credit (%d remaining).", quota.Bonus.Remaining)
+		if _, err := fmt.Fprintln(out, "       "+theme.MutedStyle.Render(hint)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func quotaSummaryFreeVerdict(detail submissionDetailResponse) string {

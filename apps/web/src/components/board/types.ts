@@ -5,6 +5,11 @@ export interface QuotaSummary {
   used: number;
   left: number;
   reset_hint: string;
+  bonus?: BonusSummary | null;
+}
+
+export interface BonusSummary {
+  remaining: number;
 }
 
 export interface LeaderboardMetric {

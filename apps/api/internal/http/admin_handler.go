@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -18,6 +19,8 @@ type AdminService interface {
 	QueueStatus(context.Context, string) (adminsvc.QueueStatus, error)
 	GetLab(context.Context, string) (adminsvc.GetLabResult, error)
 	ResetLabQuota(context.Context, string) (adminsvc.ResetLabQuotaResult, error)
+	AdjustBonusQuota(context.Context, string, int, bool) (adminsvc.AdjustBonusQuotaResult, error)
+	ResetBonusQuota(context.Context, string, bool) (adminsvc.AdjustBonusQuotaResult, error)
 }
 
 type AdminHandler struct {
@@ -102,6 +105,48 @@ func (h *AdminHandler) ResetLabQuota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.Service.ResetLabQuota(r.Context(), r.PathValue("labID"))
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *AdminHandler) AdjustBonusQuota(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.Service == nil {
+		middleware.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", http.StatusText(http.StatusInternalServerError))
+		return
+	}
+	var body struct {
+		Delta  int  `json:"delta"`
+		DryRun bool `json:"dry_run"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		middleware.WriteError(w, r, http.StatusBadRequest, "invalid_request_body", "Request body must include integer delta")
+		return
+	}
+	if body.Delta == 0 {
+		middleware.WriteError(w, r, http.StatusBadRequest, "invalid_delta", "delta must be non-zero")
+		return
+	}
+	result, err := h.Service.AdjustBonusQuota(r.Context(), r.PathValue("labID"), body.Delta, body.DryRun)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *AdminHandler) ResetBonusQuota(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.Service == nil {
+		middleware.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", http.StatusText(http.StatusInternalServerError))
+		return
+	}
+	var body struct {
+		DryRun bool `json:"dry_run"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	result, err := h.Service.ResetBonusQuota(r.Context(), r.PathValue("labID"), body.DryRun)
 	if err != nil {
 		h.writeError(w, r, err)
 		return

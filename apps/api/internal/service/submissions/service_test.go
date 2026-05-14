@@ -351,6 +351,90 @@ func TestIntakeDailyQuotaRejectsWhenQuotaDayIsExhausted(t *testing.T) {
 	}
 }
 
+func TestIntakeFallsBackToBonusQuotaWhenDailyExhausted(t *testing.T) {
+	repo, signer := newTestRepo(t)
+	repo.now = time.Date(2026, 3, 31, 16, 30, 0, 0, time.UTC)
+	repo.quotaUsage = 3
+	repo.bonusQuota = 2
+	svc := newTestService(repo)
+	svc.SetQuotaLocation(mustLoadLocation(t, "Asia/Shanghai"))
+
+	files := []UploadFile{
+		{Name: "main.c", Content: []byte("int main(void) { return 0; }\n")},
+		{Name: "README.md", Content: []byte("# sorting\n")},
+	}
+	result, err := svc.Intake(context.Background(), SubmitInput{
+		LabID:          "sorting",
+		KeyFingerprint: signer.fingerprint,
+		Timestamp:      repo.now,
+		Nonce:          "nonce-bonus-fallback",
+		Files:          files,
+		Signature:      signer.mustSign(t, "sorting", repo.now, "nonce-bonus-fallback", files),
+	})
+	if err != nil {
+		t.Fatalf("Intake() error = %v, want success via bonus quota", err)
+	}
+	if repo.lastTx == nil || repo.lastTx.bonusConsumeCalls != 1 {
+		t.Fatalf("bonus consume calls = %d, want 1", repo.lastTx.bonusConsumeCalls)
+	}
+	if repo.bonusQuota != 1 {
+		t.Fatalf("bonus quota after consume = %d, want 1", repo.bonusQuota)
+	}
+	if repo.lastCommittedSubmission.QuotaState != "bonus" {
+		t.Fatalf("committed submission quota_state = %q, want %q", repo.lastCommittedSubmission.QuotaState, "bonus")
+	}
+	if result.Quota == nil || result.Quota.Bonus == nil || result.Quota.Bonus.Remaining != 1 {
+		t.Fatalf("result.Quota = %#v, want bonus remaining=1", result.Quota)
+	}
+}
+
+func TestIntakeRejectsWhenDailyAndBonusBothExhausted(t *testing.T) {
+	repo, signer := newTestRepo(t)
+	repo.now = time.Date(2026, 3, 31, 16, 30, 0, 0, time.UTC)
+	repo.quotaUsage = 3
+	repo.bonusQuota = 0
+	svc := newTestService(repo)
+	svc.SetQuotaLocation(mustLoadLocation(t, "Asia/Shanghai"))
+
+	files := []UploadFile{
+		{Name: "main.c", Content: []byte("int main(void) { return 0; }\n")},
+		{Name: "README.md", Content: []byte("# sorting\n")},
+	}
+	_, err := svc.Intake(context.Background(), SubmitInput{
+		LabID:          "sorting",
+		KeyFingerprint: signer.fingerprint,
+		Timestamp:      repo.now,
+		Nonce:          "nonce-no-bonus",
+		Files:          files,
+		Signature:      signer.mustSign(t, "sorting", repo.now, "nonce-no-bonus", files),
+	})
+	if !errors.Is(err, ErrDailyQuotaExceeded) {
+		t.Fatalf("Intake() error = %v, want ErrDailyQuotaExceeded", err)
+	}
+	if repo.lastTx == nil || repo.lastTx.bonusConsumeCalls != 1 {
+		t.Fatalf("bonus consume calls = %d, want 1", repo.lastTx.bonusConsumeCalls)
+	}
+	if repo.artifacts.saveCalls != 0 {
+		t.Fatalf("artifact save calls = %d, want 0", repo.artifacts.saveCalls)
+	}
+}
+
+func TestGetSubmitPrecheckSurfacesBonusRemaining(t *testing.T) {
+	repo, _ := newTestRepo(t)
+	repo.quotaUsage = 2
+	repo.bonusQuota = 4
+	svc := newTestService(repo)
+	svc.SetQuotaLocation(mustLoadLocation(t, "Asia/Shanghai"))
+
+	got, err := svc.GetSubmitPrecheck(context.Background(), 7, "sorting")
+	if err != nil {
+		t.Fatalf("GetSubmitPrecheck() error = %v", err)
+	}
+	if got.Quota == nil || got.Quota.Bonus == nil || got.Quota.Bonus.Remaining != 4 {
+		t.Fatalf("precheck quota = %#v, want bonus remaining=4", got.Quota)
+	}
+}
+
 func TestIntakeCreatesSubmissionAndEvaluationJobAtomically(t *testing.T) {
 	repo, signer := newTestRepo(t)
 	repo.failCreateJob = errors.New("queue insert failed")
@@ -553,6 +637,7 @@ type fakeRepository struct {
 	artifacts               *fakeArtifactStore
 	beginCalls              int
 	quotaUsage              int64
+	bonusQuota              int
 	latestSubmission        sqlc.Submissions
 	lastQuotaUserID         int64
 	lastQuotaLabID          string
@@ -654,6 +739,10 @@ func (r *fakeRepository) CountSubmissionQuotaUsage(_ context.Context, userID int
 	return r.quotaUsage, nil
 }
 
+func (r *fakeRepository) GetBonusQuotaRemaining(_ context.Context, _ int64, _ string) (int, error) {
+	return r.bonusQuota, nil
+}
+
 func (r *fakeRepository) GetLatestSubmissionByUserLab(_ context.Context, userID int64, labID string) (sqlc.Submissions, error) {
 	if r.latestSubmission.ID == uuid.Nil || r.latestSubmission.UserID != userID || r.latestSubmission.LabID != labID {
 		return sqlc.Submissions{}, pgx.ErrNoRows
@@ -667,6 +756,7 @@ type fakeTx struct {
 	stagedJob         sqlc.EvaluationJobs
 	quotaLockCalls    int
 	quotaCountCalls   int
+	bonusConsumeCalls int
 	reserveNonceCalls int
 	commitCalls       int
 	rollbackCalls     int
@@ -700,8 +790,28 @@ func (tx *fakeTx) CreateSubmission(_ context.Context, arg sqlc.CreateSubmissionP
 		ArtifactKey: arg.ArtifactKey,
 		ContentHash: arg.ContentHash,
 		Status:      arg.Status,
+		QuotaState:  "pending",
 	}
 	return tx.stagedSubmission, nil
+}
+
+func (tx *fakeTx) CreateBonusSubmission(ctx context.Context, arg sqlc.CreateSubmissionParams) (sqlc.Submissions, error) {
+	row, err := tx.CreateSubmission(ctx, arg)
+	if err != nil {
+		return row, err
+	}
+	row.QuotaState = "bonus"
+	tx.stagedSubmission = row
+	return row, nil
+}
+
+func (tx *fakeTx) ConsumeBonusQuota(_ context.Context, _ int64, _ string) (int, bool, error) {
+	tx.bonusConsumeCalls++
+	if tx.repo.bonusQuota <= 0 {
+		return 0, false, nil
+	}
+	tx.repo.bonusQuota--
+	return tx.repo.bonusQuota, true, nil
 }
 
 func (tx *fakeTx) CreateEvaluationJob(_ context.Context, submissionID uuid.UUID) (sqlc.EvaluationJobs, error) {

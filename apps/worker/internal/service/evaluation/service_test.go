@@ -235,6 +235,176 @@ func TestPersistPreservesFreeQuotaState(t *testing.T) {
 	}
 }
 
+func TestPersistBonusSubmissionStaysBonusWhenCharged(t *testing.T) {
+	repo := newFakeRepository()
+	svc := newTestService(repo)
+
+	submission := seededSubmission("cccccccc-cccc-7ccc-8ccc-cccccccccccc", 7, "sorting")
+	submission.QuotaState = "bonus"
+	repo.submissions[submission.ID] = submission
+
+	err := svc.Persist(context.Background(), PersistInput{
+		Manifest:   testManifest(t),
+		Submission: submission,
+		Result: evaluator.Result{
+			Verdict: evaluator.VerdictScored,
+			Message: "scored",
+			Scores:  map[string]float64{"throughput": 1.0, "latency": 1.0},
+		},
+		FinishedAt: time.Date(2026, 3, 31, 13, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("Persist() error = %v", err)
+	}
+	if got := repo.submissions[submission.ID].QuotaState; got != "bonus" {
+		t.Fatalf("quota_state = %q, want %q", got, "bonus")
+	}
+	if repo.lastTx.refundCalls != 0 {
+		t.Fatalf("refund calls = %d, want 0 (scored verdict should not refund)", repo.lastTx.refundCalls)
+	}
+	if repo.bonusRemaining[bonusKey{userID: submission.UserID, labID: submission.LabID}] != 0 {
+		t.Fatalf("bonus remaining was bumped on charged outcome")
+	}
+}
+
+func TestPersistBonusSubmissionRefundsOnSystemError(t *testing.T) {
+	repo := newFakeRepository()
+	svc := newTestService(repo)
+
+	submission := seededSubmission("dddddddd-dddd-7ddd-8ddd-dddddddddddd", 7, "sorting")
+	submission.QuotaState = "bonus"
+	repo.submissions[submission.ID] = submission
+
+	err := svc.Persist(context.Background(), PersistInput{
+		Manifest:   testManifest(t),
+		Submission: submission,
+		Result: evaluator.Result{
+			Verdict: evaluator.VerdictError,
+			Message: "system error",
+		},
+		FinishedAt: time.Date(2026, 3, 31, 13, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("Persist() error = %v", err)
+	}
+	if got := repo.submissions[submission.ID].QuotaState; got != "free" {
+		t.Fatalf("quota_state = %q, want %q (bonus credit must be refunded on system error)", got, "free")
+	}
+	if repo.lastTx.refundCalls != 1 {
+		t.Fatalf("refund calls = %d, want 1", repo.lastTx.refundCalls)
+	}
+	if repo.lastTx.quotaStateCalls != 0 {
+		t.Fatalf("quota state direct updates = %d, want 0 (refund path owns the state flip)", repo.lastTx.quotaStateCalls)
+	}
+	if got := repo.bonusRemaining[bonusKey{userID: submission.UserID, labID: submission.LabID}]; got != 1 {
+		t.Fatalf("bonus remaining increment = %d, want 1", got)
+	}
+}
+
+func TestPersistBonusSubmissionRefundsWhenManifestDeclaresVerdictFree(t *testing.T) {
+	repo := newFakeRepository()
+	svc := newTestService(repo)
+
+	submission := seededSubmission("eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee", 7, "sorting")
+	submission.QuotaState = "bonus"
+	repo.submissions[submission.ID] = submission
+
+	m := testManifest(t)
+	m.Quota.Free = []string{"build_failed"}
+
+	err := svc.Persist(context.Background(), PersistInput{
+		Manifest:   m,
+		Submission: submission,
+		Result: evaluator.Result{
+			Verdict: evaluator.VerdictBuildFailed,
+			Message: "build_failed",
+		},
+		FinishedAt: time.Date(2026, 3, 31, 13, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("Persist() error = %v", err)
+	}
+	if got := repo.submissions[submission.ID].QuotaState; got != "free" {
+		t.Fatalf("quota_state = %q, want %q (manifest-declared free verdict should refund bonus)", got, "free")
+	}
+	if got := repo.bonusRemaining[bonusKey{userID: submission.UserID, labID: submission.LabID}]; got != 1 {
+		t.Fatalf("bonus remaining increment = %d, want 1", got)
+	}
+}
+
+func TestPersistBonusRefundIsIdempotentWhenStaleSnapshotRetries(t *testing.T) {
+	// Race scenario: two workers each fetched the submission while it was still
+	// quota_state='bonus' (e.g., the first worker committed but didn't yet mark
+	// the job done before a duplicate handoff). Both pass Persist a stale
+	// in.Submission with QuotaState='bonus'. The refund SQL's CTE guard
+	// (`WHERE quota_state = 'bonus'`) must make sure only one of them succeeds.
+	repo := newFakeRepository()
+	svc := newTestService(repo)
+
+	submission := seededSubmission("11111111-1111-7111-8aaa-111111111111", 7, "sorting")
+	submission.QuotaState = "bonus"
+	repo.submissions[submission.ID] = submission
+
+	in := PersistInput{
+		Manifest:   testManifest(t),
+		Submission: submission, // both calls share the stale 'bonus' snapshot
+		Result: evaluator.Result{
+			Verdict: evaluator.VerdictError,
+			Message: "transient",
+		},
+		FinishedAt: time.Date(2026, 3, 31, 13, 0, 0, 0, time.UTC),
+	}
+	if err := svc.Persist(context.Background(), in); err != nil {
+		t.Fatalf("Persist() first call error = %v", err)
+	}
+	if err := svc.Persist(context.Background(), in); err != nil {
+		t.Fatalf("Persist() second call error = %v", err)
+	}
+
+	if got := repo.bonusRemaining[bonusKey{userID: submission.UserID, labID: submission.LabID}]; got != 1 {
+		t.Fatalf("bonus remaining after duplicated handoff = %d, want 1", got)
+	}
+	if repo.lastTx.refundCalls != 1 {
+		// Note: refundCalls counts on the *last* tx only; first tx was a separate fakeTx.
+		// The invariant we really care about is bonusRemaining stays at 1, asserted above.
+		_ = repo.lastTx.refundCalls
+	}
+}
+
+func TestPersistBonusRefundIsIdempotentOnRetry(t *testing.T) {
+	repo := newFakeRepository()
+	svc := newTestService(repo)
+
+	submission := seededSubmission("ffffffff-ffff-7fff-8fff-ffffffffffff", 7, "sorting")
+	submission.QuotaState = "bonus"
+	repo.submissions[submission.ID] = submission
+
+	in := PersistInput{
+		Manifest:   testManifest(t),
+		Submission: submission,
+		Result: evaluator.Result{
+			Verdict: evaluator.VerdictError,
+			Message: "transient infra failure",
+		},
+		FinishedAt: time.Date(2026, 3, 31, 13, 0, 0, 0, time.UTC),
+	}
+	if err := svc.Persist(context.Background(), in); err != nil {
+		t.Fatalf("Persist() first call error = %v", err)
+	}
+
+	// Simulate worker retry: same input, but the submission row in DB is now 'free'
+	// (post-first-commit state). The bonus credit was already refunded.
+	in.Submission = repo.submissions[submission.ID]
+	if err := svc.Persist(context.Background(), in); err != nil {
+		t.Fatalf("Persist() second call error = %v", err)
+	}
+
+	got := repo.bonusRemaining[bonusKey{userID: submission.UserID, labID: submission.LabID}]
+	if got != 1 {
+		t.Fatalf("bonus remaining after retry = %d, want 1 (refund must be at-most-once)", got)
+	}
+}
+
 func TestPersistInvalidEvaluatorOutputReturnsEvaluatorErrorWithoutTransaction(t *testing.T) {
 	repo := newFakeRepository()
 	svc := newTestService(repo)
@@ -378,21 +548,28 @@ type leaderboardKey struct {
 	labID  string
 }
 
+type bonusKey struct {
+	userID int64
+	labID  string
+}
+
 type fakeRepository struct {
-	now         time.Time
-	beginCalls  int
-	lastTx      *fakeTx
-	submissions map[uuid.UUID]sqlc.Submissions
-	scores      map[uuid.UUID]map[string]float32
-	leaderboard map[leaderboardKey]sqlc.Leaderboard
+	now            time.Time
+	beginCalls     int
+	lastTx         *fakeTx
+	submissions    map[uuid.UUID]sqlc.Submissions
+	scores         map[uuid.UUID]map[string]float32
+	leaderboard    map[leaderboardKey]sqlc.Leaderboard
+	bonusRemaining map[bonusKey]int
 }
 
 func newFakeRepository() *fakeRepository {
 	return &fakeRepository{
-		now:         time.Date(2026, 3, 31, 13, 14, 15, 0, time.UTC),
-		submissions: map[uuid.UUID]sqlc.Submissions{},
-		scores:      map[uuid.UUID]map[string]float32{},
-		leaderboard: map[leaderboardKey]sqlc.Leaderboard{},
+		now:            time.Date(2026, 3, 31, 13, 14, 15, 0, time.UTC),
+		submissions:    map[uuid.UUID]sqlc.Submissions{},
+		scores:         map[uuid.UUID]map[string]float32{},
+		leaderboard:    map[leaderboardKey]sqlc.Leaderboard{},
+		bonusRemaining: map[bonusKey]int{},
 	}
 }
 
@@ -415,6 +592,7 @@ type fakeTx struct {
 	repo             *fakeRepository
 	updateCalls      int
 	quotaStateCalls  int
+	refundCalls      int
 	scoreCalls       int
 	leaderboardCalls int
 	commitCalls      int
@@ -444,6 +622,21 @@ func (tx *fakeTx) UpdateSubmissionQuotaState(_ context.Context, arg sqlc.UpdateS
 	row.QuotaState = arg.QuotaState
 	tx.repo.submissions[arg.ID] = row
 	return nil
+}
+
+func (tx *fakeTx) RefundBonusSubmission(_ context.Context, id uuid.UUID) (int64, error) {
+	tx.refundCalls++
+	row, ok := tx.repo.submissions[id]
+	if !ok {
+		return 0, nil
+	}
+	if row.QuotaState != "bonus" {
+		return 0, nil
+	}
+	row.QuotaState = "free"
+	tx.repo.submissions[id] = row
+	tx.repo.bonusRemaining[bonusKey{userID: row.UserID, labID: row.LabID}]++
+	return 1, nil
 }
 
 func (tx *fakeTx) CreateScore(_ context.Context, arg sqlc.CreateScoreParams) error {
@@ -491,6 +684,7 @@ func (tx *fakeTx) Rollback(context.Context) error {
 var _ interface {
 	UpdateSubmissionResult(context.Context, sqlc.UpdateSubmissionResultParams) error
 	UpdateSubmissionQuotaState(context.Context, sqlc.UpdateSubmissionQuotaStateParams) error
+	RefundBonusSubmission(context.Context, uuid.UUID) (int64, error)
 	CreateScore(context.Context, sqlc.CreateScoreParams) error
 	UpsertLeaderboardEntry(context.Context, sqlc.UpsertLeaderboardEntryParams) (sqlc.Leaderboard, error)
 	Commit(context.Context) error

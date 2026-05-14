@@ -72,6 +72,7 @@ type Repository interface {
 	ListUserKeys(context.Context, int64) ([]sqlc.UserKeys, error)
 	ReserveNonce(context.Context, string) (bool, error)
 	CountSubmissionQuotaUsage(context.Context, int64, string, time.Time, time.Time) (int64, error)
+	GetBonusQuotaRemaining(context.Context, int64, string) (int, error)
 	GetLatestSubmissionByUserLab(context.Context, int64, string) (sqlc.Submissions, error)
 	BeginTx(context.Context) (Tx, error)
 }
@@ -79,8 +80,10 @@ type Repository interface {
 type Tx interface {
 	LockSubmissionQuota(context.Context, int64, string, time.Time) error
 	CountSubmissionQuotaUsage(context.Context, int64, string, time.Time, time.Time) (int64, error)
+	ConsumeBonusQuota(context.Context, int64, string) (int, bool, error)
 	ReserveNonce(context.Context, string) (bool, error)
 	CreateSubmission(context.Context, sqlc.CreateSubmissionParams) (sqlc.Submissions, error)
+	CreateBonusSubmission(context.Context, sqlc.CreateSubmissionParams) (sqlc.Submissions, error)
 	CreateEvaluationJob(context.Context, uuid.UUID) (sqlc.EvaluationJobs, error)
 	Commit(context.Context) error
 	Rollback(context.Context) error
@@ -207,9 +210,22 @@ func (s *Service) Intake(ctx context.Context, input SubmitInput) (result Submiss
 	if err := tx.LockSubmissionQuota(ctx, key.UserID, input.LabID, windowStart); err != nil {
 		return Submission{}, err
 	}
-	usedBefore, err := s.enforceDailyQuota(ctx, tx, manifestData, key.UserID, input.LabID, windowStart, windowEnd)
+	usedBefore, dailyExhausted, err := s.checkDailyQuota(ctx, tx, manifestData, key.UserID, input.LabID, windowStart, windowEnd)
 	if err != nil {
 		return Submission{}, err
+	}
+	bonusUsed := false
+	bonusRemainingAfter := 0
+	if dailyExhausted {
+		remaining, consumed, err := tx.ConsumeBonusQuota(ctx, key.UserID, input.LabID)
+		if err != nil {
+			return Submission{}, err
+		}
+		if !consumed {
+			return Submission{}, NewDailyQuotaExceededError(manifestData.Quota.Daily, int(usedBefore), s.quotaLocationOrDefault())
+		}
+		bonusUsed = true
+		bonusRemainingAfter = remaining
 	}
 	if err := s.artifacts.Save(ctx, artifactKey, archive); err != nil {
 		return Submission{}, fmt.Errorf("persist artifact: %w", err)
@@ -221,14 +237,20 @@ func (s *Service) Intake(ctx context.Context, input SubmitInput) (result Submiss
 		return Submission{}, auth.ErrNonceReplayed
 	}
 
-	submissionRow, err := tx.CreateSubmission(ctx, sqlc.CreateSubmissionParams{
+	createParams := sqlc.CreateSubmissionParams{
 		UserID:      key.UserID,
 		LabID:       input.LabID,
 		KeyID:       key.ID,
 		ArtifactKey: artifactKey,
 		ContentHash: contentHash,
 		Status:      "queued",
-	})
+	}
+	var submissionRow sqlc.Submissions
+	if bonusUsed {
+		submissionRow, err = tx.CreateBonusSubmission(ctx, createParams)
+	} else {
+		submissionRow, err = tx.CreateSubmission(ctx, createParams)
+	}
 	if err != nil {
 		return Submission{}, err
 	}
@@ -241,12 +263,16 @@ func (s *Service) Intake(ctx context.Context, input SubmitInput) (result Submiss
 	committed = true
 	savedArtifact = false
 
+	usedAfter := int(usedBefore)
+	if !bonusUsed {
+		usedAfter++
+	}
 	return Submission{
 		ID:          submissionRow.ID,
 		Status:      submissionRow.Status,
 		ArtifactKey: submissionRow.ArtifactKey,
 		ContentHash: submissionRow.ContentHash,
-		Quota:       BuildQuotaSummary(manifestData, int(usedBefore)+1, s.quotaLocationOrDefault()),
+		Quota:       BuildQuotaSummaryWithBonus(manifestData, usedAfter, bonusRemainingAfter, s.quotaLocationOrDefault()),
 	}, nil
 }
 
@@ -272,9 +298,13 @@ func (s *Service) GetSubmitPrecheck(ctx context.Context, userID int64, labID str
 	if err != nil {
 		return SubmitPrecheck{}, err
 	}
+	bonusRemaining, err := s.repo.GetBonusQuotaRemaining(ctx, userID, labID)
+	if err != nil {
+		return SubmitPrecheck{}, err
+	}
 
 	precheck := SubmitPrecheck{
-		Quota: BuildQuotaSummary(manifestData, int(used), s.quotaLocationOrDefault()),
+		Quota: BuildQuotaSummaryWithBonus(manifestData, int(used), bonusRemaining, s.quotaLocationOrDefault()),
 	}
 	latest, err := s.repo.GetLatestSubmissionByUserLab(ctx, userID, labID)
 	if err != nil {
@@ -295,19 +325,16 @@ func (s *Service) nowUTC() time.Time {
 	return now().UTC()
 }
 
-func (s *Service) enforceDailyQuota(ctx context.Context, tx Tx, manifestData *manifest.Manifest, userID int64, labID string, windowStart, windowEnd time.Time) (int64, error) {
+func (s *Service) checkDailyQuota(ctx context.Context, tx Tx, manifestData *manifest.Manifest, userID int64, labID string, windowStart, windowEnd time.Time) (int64, bool, error) {
 	if manifestData == nil || manifestData.Quota.Daily <= 0 {
-		return 0, nil
+		return 0, false, nil
 	}
 
 	used, err := tx.CountSubmissionQuotaUsage(ctx, userID, labID, windowStart, windowEnd)
 	if err != nil {
-		return 0, err
+		return 0, false, err
 	}
-	if used < int64(manifestData.Quota.Daily) {
-		return used, nil
-	}
-	return used, NewDailyQuotaExceededError(manifestData.Quota.Daily, int(used), s.quotaLocationOrDefault())
+	return used, used >= int64(manifestData.Quota.Daily), nil
 }
 
 func (s *Service) quotaLocationOrDefault() *time.Location {
@@ -539,6 +566,20 @@ func (r *repo) CountSubmissionQuotaUsage(ctx context.Context, userID int64, labI
 	})
 }
 
+func (r *repo) GetBonusQuotaRemaining(ctx context.Context, userID int64, labID string) (int, error) {
+	remaining, err := r.store.GetBonusQuota(ctx, sqlc.GetBonusQuotaParams{
+		UserID: userID,
+		LabID:  labID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return int(remaining), nil
+}
+
 func (r *repo) GetLatestSubmissionByUserLab(ctx context.Context, userID int64, labID string) (sqlc.Submissions, error) {
 	return r.store.GetLatestSubmissionByUserLab(ctx, sqlc.GetLatestSubmissionByUserLabParams{
 		UserID: userID,
@@ -583,6 +624,37 @@ func (tx *storeTx) ReserveNonce(ctx context.Context, nonce string) (bool, error)
 
 func (tx *storeTx) CreateSubmission(ctx context.Context, arg sqlc.CreateSubmissionParams) (sqlc.Submissions, error) {
 	return tx.store.CreateSubmission(ctx, arg)
+}
+
+func (tx *storeTx) CreateBonusSubmission(ctx context.Context, arg sqlc.CreateSubmissionParams) (sqlc.Submissions, error) {
+	return tx.store.CreateBonusSubmission(ctx, sqlc.CreateBonusSubmissionParams{
+		UserID:      arg.UserID,
+		LabID:       arg.LabID,
+		KeyID:       arg.KeyID,
+		ArtifactKey: arg.ArtifactKey,
+		ContentHash: arg.ContentHash,
+		Status:      arg.Status,
+		Verdict:     arg.Verdict,
+		Message:     arg.Message,
+		Detail:      arg.Detail,
+		ImageDigest: arg.ImageDigest,
+		StartedAt:   arg.StartedAt,
+		FinishedAt:  arg.FinishedAt,
+	})
+}
+
+func (tx *storeTx) ConsumeBonusQuota(ctx context.Context, userID int64, labID string) (int, bool, error) {
+	remaining, err := tx.store.ConsumeBonusQuota(ctx, sqlc.ConsumeBonusQuotaParams{
+		UserID: userID,
+		LabID:  labID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+	return int(remaining), true, nil
 }
 
 func (tx *storeTx) CreateEvaluationJob(ctx context.Context, submissionID uuid.UUID) (sqlc.EvaluationJobs, error) {

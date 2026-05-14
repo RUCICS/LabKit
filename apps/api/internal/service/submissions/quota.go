@@ -10,10 +10,15 @@ import (
 )
 
 type QuotaSummary struct {
-	Daily     int    `json:"daily"`
-	Used      int    `json:"used"`
-	Left      int    `json:"left"`
-	ResetHint string `json:"reset_hint"`
+	Daily     int          `json:"daily"`
+	Used      int          `json:"used"`
+	Left      int          `json:"left"`
+	ResetHint string       `json:"reset_hint"`
+	Bonus     *BonusSummary `json:"bonus,omitempty"`
+}
+
+type BonusSummary struct {
+	Remaining int `json:"remaining"`
 }
 
 type LatestSubmissionHint struct {
@@ -43,6 +48,10 @@ func ResetHintForLocation(location *time.Location) string {
 }
 
 func BuildQuotaSummary(m *manifest.Manifest, used int, location *time.Location) *QuotaSummary {
+	return BuildQuotaSummaryWithBonus(m, used, 0, location)
+}
+
+func BuildQuotaSummaryWithBonus(m *manifest.Manifest, used, bonusRemaining int, location *time.Location) *QuotaSummary {
 	if m == nil || m.Quota.Daily <= 0 {
 		return nil
 	}
@@ -50,12 +59,16 @@ func BuildQuotaSummary(m *manifest.Manifest, used int, location *time.Location) 
 	if left < 0 {
 		left = 0
 	}
-	return &QuotaSummary{
+	summary := &QuotaSummary{
 		Daily:     m.Quota.Daily,
 		Used:      used,
 		Left:      left,
 		ResetHint: ResetHintForLocation(location),
 	}
+	if bonusRemaining > 0 {
+		summary.Bonus = &BonusSummary{Remaining: bonusRemaining}
+	}
+	return summary
 }
 
 func CountQuotaUsage(rows []sqlc.Submissions, start, end time.Time) int {

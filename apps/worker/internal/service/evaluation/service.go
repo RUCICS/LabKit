@@ -29,6 +29,7 @@ type Repository interface {
 type Tx interface {
 	UpdateSubmissionResult(context.Context, sqlc.UpdateSubmissionResultParams) error
 	UpdateSubmissionQuotaState(context.Context, sqlc.UpdateSubmissionQuotaStateParams) error
+	RefundBonusSubmission(context.Context, uuid.UUID) (int64, error)
 	CreateScore(context.Context, sqlc.CreateScoreParams) error
 	UpsertLeaderboardEntry(context.Context, sqlc.UpsertLeaderboardEntryParams) (sqlc.Leaderboard, error)
 	Commit(context.Context) error
@@ -107,11 +108,32 @@ func (s *Service) Persist(ctx context.Context, in PersistInput) (err error) {
 	if in.Submission.QuotaState == "free" {
 		newQuotaState = "free"
 	}
-	if err := tx.UpdateSubmissionQuotaState(ctx, sqlc.UpdateSubmissionQuotaStateParams{
-		ID:         in.Submission.ID,
-		QuotaState: newQuotaState,
-	}); err != nil {
-		return err
+	if in.Submission.QuotaState == "bonus" {
+		if newQuotaState == "free" {
+			// Bonus-funded submission ended in a no-charge verdict (e.g. VerdictError
+			// or a manifest-declared free verdict). Atomically flip quota_state from
+			// 'bonus' to 'free' and increment user_lab_bonus_quota.remaining. The CTE
+			// uses `WHERE quota_state = 'bonus'` as the idempotency gate: a retried
+			// Persist sees quota_state already 'free' and no-ops, so each bonus
+			// submission can be refunded at most once.
+			if _, err := tx.RefundBonusSubmission(ctx, in.Submission.ID); err != nil {
+				return err
+			}
+		} else {
+			if err := tx.UpdateSubmissionQuotaState(ctx, sqlc.UpdateSubmissionQuotaStateParams{
+				ID:         in.Submission.ID,
+				QuotaState: "bonus",
+			}); err != nil {
+				return err
+			}
+		}
+	} else {
+		if err := tx.UpdateSubmissionQuotaState(ctx, sqlc.UpdateSubmissionQuotaStateParams{
+			ID:         in.Submission.ID,
+			QuotaState: newQuotaState,
+		}); err != nil {
+			return err
+		}
 	}
 
 	if in.Result.Verdict == evaluator.VerdictScored {

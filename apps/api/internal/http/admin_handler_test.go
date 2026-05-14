@@ -188,11 +188,14 @@ func TestAdminHandlerResetLabQuota(t *testing.T) {
 }
 
 type fakeAdminService struct {
-	export     adminsvc.ExportGradesResult
-	reeval     adminsvc.ReevaluateResult
-	queue      adminsvc.QueueStatus
-	lab        adminsvc.GetLabResult
-	resetQuota adminsvc.ResetLabQuotaResult
+	export       adminsvc.ExportGradesResult
+	reeval       adminsvc.ReevaluateResult
+	queue        adminsvc.QueueStatus
+	lab          adminsvc.GetLabResult
+	resetQuota   adminsvc.ResetLabQuotaResult
+	bonusResult  adminsvc.AdjustBonusQuotaResult
+	bonusDelta   int
+	bonusReset   bool
 }
 
 func (f *fakeAdminService) ExportGrades(context.Context, string) (adminsvc.ExportGradesResult, error) {
@@ -213,4 +216,14 @@ func (f *fakeAdminService) GetLab(context.Context, string) (adminsvc.GetLabResul
 
 func (f *fakeAdminService) ResetLabQuota(context.Context, string) (adminsvc.ResetLabQuotaResult, error) {
 	return f.resetQuota, nil
+}
+
+func (f *fakeAdminService) AdjustBonusQuota(_ context.Context, _ string, delta int, _ bool) (adminsvc.AdjustBonusQuotaResult, error) {
+	f.bonusDelta = delta
+	return f.bonusResult, nil
+}
+
+func (f *fakeAdminService) ResetBonusQuota(_ context.Context, _ string, _ bool) (adminsvc.AdjustBonusQuotaResult, error) {
+	f.bonusReset = true
+	return f.bonusResult, nil
 }

@@ -300,11 +300,12 @@ profiles AS (
     FROM lab_profiles WHERE lab_id = '$LAB_ID'
 ),
 
--- All scored submissions in the 1-hour window before cutoff, with all metric scores
-window_scores AS (
+-- All pre-cutoff scored submissions with all metric scores and a window flag
+all_pre AS (
     SELECT
         s.id AS sub_id,
         s.user_id,
+        s.created_at,
         COALESCE(p.track, 'throughput') AS track,
         COALESCE(p.nickname, '匿名')    AS nickname,
         MAX(CASE WHEN sc.metric_id = 'throughput' THEN sc.value::float8 END) AS throughput,
@@ -315,35 +316,47 @@ window_scores AS (
     JOIN scores sc ON sc.submission_id = s.id
     WHERE s.lab_id = '$LAB_ID'
       AND s.verdict = 'scored'
-      AND s.created_at >= (SELECT ts - INTERVAL '1 hour' FROM cutoff)
-      AND s.created_at <  (SELECT ts FROM cutoff)
-    GROUP BY s.id, s.user_id, p.track, p.nickname
+      AND s.created_at < (SELECT ts FROM cutoff)
+    GROUP BY s.id, s.user_id, s.created_at, p.track, p.nickname
 ),
-
--- Compute sort key (score on user's selected track) per submission
-window_with_sort AS (
+all_pre_with_sort AS (
     SELECT *,
-        CASE track
-            WHEN 'latency'  THEN latency
-            WHEN 'fairness' THEN fairness
-            ELSE throughput
-        END AS sort_val
-    FROM window_scores
+        CASE track WHEN 'latency' THEN latency WHEN 'fairness' THEN fairness ELSE throughput END AS sort_val,
+        created_at >= (SELECT ts - INTERVAL '1 hour' FROM cutoff) AS in_window
+    FROM all_pre
 ),
 
--- Best submission per user in the window (highest score on their track)
+-- Priority 1: best score in the 1-hour window
 best_in_window AS (
     SELECT DISTINCT ON (user_id)
         user_id, track, nickname, throughput, latency, fairness, sort_val
-    FROM window_with_sort
+    FROM all_pre_with_sort
+    WHERE in_window
     ORDER BY user_id, sort_val DESC NULLS LAST
+),
+
+-- Priority 2: most recent submission before the window (fallback for users not in window)
+latest_before_window AS (
+    SELECT DISTINCT ON (user_id)
+        user_id, track, nickname, throughput, latency, fairness, sort_val
+    FROM all_pre_with_sort
+    WHERE NOT in_window
+      AND user_id NOT IN (SELECT user_id FROM best_in_window)
+    ORDER BY user_id, created_at DESC
+),
+
+-- Merge: window-best takes priority, fallback fills the rest
+chosen AS (
+    SELECT * FROM best_in_window
+    UNION ALL
+    SELECT * FROM latest_before_window
 ),
 
 ranked AS (
     SELECT
         ROW_NUMBER() OVER (ORDER BY sort_val DESC NULLS LAST) AS rank,
         user_id, track, nickname, throughput, latency, fairness, sort_val
-    FROM best_in_window
+    FROM chosen
 )
 SELECT
     rank,

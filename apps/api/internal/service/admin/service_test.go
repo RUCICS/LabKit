@@ -307,6 +307,13 @@ type adminTestRepo struct {
 	listLeaderboardCalls int
 	resetQuotaCallCount  int
 	lastResetLabID       string
+	participants         int64
+	bonusAffected        int64
+	bonusAdjustCalls     int
+	bonusResetCalls      int
+	lastBonusLabID       string
+	lastBonusDelta       int
+	lastParticipantsLabID string
 }
 
 func newAdminTestRepo(t *testing.T) *adminTestRepo {
@@ -628,6 +635,24 @@ func (r *adminTestRepo) AdminResetLabQuotaToday(_ context.Context, labID string,
 	return int64(r.resetQuotaCallCount), nil
 }
 
+func (r *adminTestRepo) CountLabParticipants(_ context.Context, labID string) (int64, error) {
+	r.lastParticipantsLabID = labID
+	return r.participants, nil
+}
+
+func (r *adminTestRepo) AdjustBonusQuotaForLab(_ context.Context, labID string, delta int) (int64, error) {
+	r.lastBonusLabID = labID
+	r.lastBonusDelta = delta
+	r.bonusAdjustCalls++
+	return r.bonusAffected, nil
+}
+
+func (r *adminTestRepo) ResetBonusQuotaForLab(_ context.Context, labID string) (int64, error) {
+	r.lastBonusLabID = labID
+	r.bonusResetCalls++
+	return r.bonusAffected, nil
+}
+
 func TestResetLabQuotaMarksChargingSubmissionsAsAdminReset(t *testing.T) {
 	repo := newAdminTestRepo(t)
 	svc := NewService(repo)
@@ -644,5 +669,66 @@ func TestResetLabQuotaMarksChargingSubmissionsAsAdminReset(t *testing.T) {
 	}
 	if repo.lastResetLabID != "sorting" {
 		t.Fatalf("reset lab_id = %q, want %q", repo.lastResetLabID, "sorting")
+	}
+}
+
+func TestAdjustBonusQuotaReportsAffectedAndParticipants(t *testing.T) {
+	repo := newAdminTestRepo(t)
+	repo.participants = 42
+	repo.bonusAffected = 42
+	svc := NewService(repo)
+
+	result, err := svc.AdjustBonusQuota(context.Background(), "sorting", 5, false)
+	if err != nil {
+		t.Fatalf("AdjustBonusQuota() error = %v", err)
+	}
+	if result.UsersAffected != 42 {
+		t.Fatalf("UsersAffected = %d, want 42", result.UsersAffected)
+	}
+	if result.LabParticipants != 42 {
+		t.Fatalf("LabParticipants = %d, want 42", result.LabParticipants)
+	}
+	if result.Delta != 5 {
+		t.Fatalf("Delta = %d, want 5", result.Delta)
+	}
+	if repo.bonusAdjustCalls != 1 || repo.lastBonusDelta != 5 || repo.lastBonusLabID != "sorting" {
+		t.Fatalf("adjust call state = %+v, want one call with delta=5 for sorting", repo)
+	}
+}
+
+func TestAdjustBonusQuotaRejectsZeroDelta(t *testing.T) {
+	repo := newAdminTestRepo(t)
+	svc := NewService(repo)
+
+	_, err := svc.AdjustBonusQuota(context.Background(), "sorting", 0, false)
+	if err == nil {
+		t.Fatal("AdjustBonusQuota() error = nil, want non-zero delta error")
+	}
+}
+
+func TestAdjustBonusQuotaReturnsErrLabNotFound(t *testing.T) {
+	repo := newAdminTestRepo(t)
+	svc := NewService(repo)
+
+	_, err := svc.AdjustBonusQuota(context.Background(), "missing", 1, false)
+	if !errors.Is(err, ErrLabNotFound) {
+		t.Fatalf("AdjustBonusQuota() error = %v, want ErrLabNotFound", err)
+	}
+}
+
+func TestResetBonusQuotaZerosOutLab(t *testing.T) {
+	repo := newAdminTestRepo(t)
+	repo.bonusAffected = 7
+	svc := NewService(repo)
+
+	result, err := svc.ResetBonusQuota(context.Background(), "sorting", false)
+	if err != nil {
+		t.Fatalf("ResetBonusQuota() error = %v", err)
+	}
+	if !result.Reset || result.UsersAffected != 7 {
+		t.Fatalf("ResetBonusQuota result = %+v, want reset=true affected=7", result)
+	}
+	if repo.bonusResetCalls != 1 {
+		t.Fatalf("ResetBonusQuotaForLab called %d times, want 1", repo.bonusResetCalls)
 	}
 }

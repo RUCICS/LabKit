@@ -35,6 +35,9 @@ type Repository interface {
 	ListScoresByLab(context.Context, string) ([]sqlc.Scores, error)
 	ListRecentEvaluationJobsByLab(context.Context, sqlc.ListRecentEvaluationJobsByLabParams) ([]sqlc.ListRecentEvaluationJobsByLabRow, error)
 	AdminResetLabQuotaToday(context.Context, string, time.Time) (int64, error)
+	CountLabParticipants(context.Context, string) (int64, error)
+	AdjustBonusQuotaForLab(context.Context, string, int) (int64, error)
+	ResetBonusQuotaForLab(context.Context, string) (int64, error)
 	BeginTx(context.Context) (Tx, error)
 }
 
@@ -136,6 +139,76 @@ func (s *Service) ResetLabQuota(ctx context.Context, labID string) (ResetLabQuot
 		return ResetLabQuotaResult{}, err
 	}
 	return ResetLabQuotaResult{RowsAffected: n}, nil
+}
+
+type AdjustBonusQuotaResult struct {
+	LabID           string `json:"lab_id"`
+	Delta           int    `json:"delta"`
+	UsersAffected   int64  `json:"users_affected"`
+	LabParticipants int64  `json:"lab_participants"`
+	Reset           bool   `json:"reset,omitempty"`
+	DryRun          bool   `json:"dry_run,omitempty"`
+}
+
+func (s *Service) AdjustBonusQuota(ctx context.Context, labID string, delta int, dryRun bool) (AdjustBonusQuotaResult, error) {
+	if _, err := s.loadLabRow(ctx, labID); err != nil {
+		return AdjustBonusQuotaResult{}, err
+	}
+	if delta == 0 {
+		return AdjustBonusQuotaResult{}, fmt.Errorf("delta must be non-zero")
+	}
+	participants, err := s.repo.CountLabParticipants(ctx, labID)
+	if err != nil {
+		return AdjustBonusQuotaResult{}, err
+	}
+	if dryRun {
+		return AdjustBonusQuotaResult{
+			LabID:           labID,
+			Delta:           delta,
+			UsersAffected:   participants,
+			LabParticipants: participants,
+			DryRun:          true,
+		}, nil
+	}
+	affected, err := s.repo.AdjustBonusQuotaForLab(ctx, labID, delta)
+	if err != nil {
+		return AdjustBonusQuotaResult{}, err
+	}
+	return AdjustBonusQuotaResult{
+		LabID:           labID,
+		Delta:           delta,
+		UsersAffected:   affected,
+		LabParticipants: participants,
+	}, nil
+}
+
+func (s *Service) ResetBonusQuota(ctx context.Context, labID string, dryRun bool) (AdjustBonusQuotaResult, error) {
+	if _, err := s.loadLabRow(ctx, labID); err != nil {
+		return AdjustBonusQuotaResult{}, err
+	}
+	participants, err := s.repo.CountLabParticipants(ctx, labID)
+	if err != nil {
+		return AdjustBonusQuotaResult{}, err
+	}
+	if dryRun {
+		return AdjustBonusQuotaResult{
+			LabID:           labID,
+			UsersAffected:   participants,
+			LabParticipants: participants,
+			Reset:           true,
+			DryRun:          true,
+		}, nil
+	}
+	affected, err := s.repo.ResetBonusQuotaForLab(ctx, labID)
+	if err != nil {
+		return AdjustBonusQuotaResult{}, err
+	}
+	return AdjustBonusQuotaResult{
+		LabID:           labID,
+		UsersAffected:   affected,
+		LabParticipants: participants,
+		Reset:           true,
+	}, nil
 }
 
 func (s *Service) ExportGrades(ctx context.Context, labID string) (ExportGradesResult, error) {

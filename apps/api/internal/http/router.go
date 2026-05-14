@@ -215,6 +215,8 @@ func registerV1APIRoutes(
 	mux.Handle("POST "+apiPrefix+"/admin/labs/{labID}/reeval", adminGuard(http.HandlerFunc(adminHandler.Reevaluate)))
 	mux.Handle("GET "+apiPrefix+"/admin/labs/{labID}/queue", adminGuard(http.HandlerFunc(adminHandler.GetQueueStatus)))
 	mux.Handle("POST "+apiPrefix+"/admin/labs/{labID}/quota/reset", adminGuard(http.HandlerFunc(adminHandler.ResetLabQuota)))
+	mux.Handle("POST "+apiPrefix+"/admin/labs/{labID}/quota/bonus", adminGuard(http.HandlerFunc(adminHandler.AdjustBonusQuota)))
+	mux.Handle("POST "+apiPrefix+"/admin/labs/{labID}/quota/bonus/reset", adminGuard(http.HandlerFunc(adminHandler.ResetBonusQuota)))
 }
 
 type v2LabsServiceAdapter struct {

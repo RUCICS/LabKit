@@ -3,18 +3,23 @@ import { onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import AdminShell from '../components/admin/AdminShell.vue';
 import LabEditDrawer from '../components/admin/LabEditDrawer.vue';
+import LabActionsMenu from '../components/admin/LabActionsMenu.vue';
+import QuotaActionDialog from '../components/admin/QuotaActionDialog.vue';
 import StatusBadge from '../components/chrome/StatusBadge.vue';
 import { authorizedAdminHeaders, readAPIError } from '../lib/admin';
 import { getLabPhase, getLabSchedule, labPhaseLabel } from '../lib/labs';
 import type { PublicLab } from '../components/board/types';
+
+type QuotaAction = 'reset-daily' | 'grant-bonus' | 'reset-bonus';
 
 const labs = ref<PublicLab[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const drawerLabId = ref<string | null>(null);
 const drawerOpen = ref(false);
-const resetting = ref<string | null>(null);
-const resetError = ref<string | null>(null);
+const dialogLab = ref<PublicLab | null>(null);
+const dialogAction = ref<QuotaAction | null>(null);
+const flash = ref<string | null>(null);
 
 async function loadLabs() {
   loading.value = true;
@@ -49,31 +54,26 @@ function labPhase(lab: PublicLab) {
   return getLabPhase(getLabSchedule(lab.manifest));
 }
 
-onMounted(() => void loadLabs());
-
-async function resetQuota(labId: string, labName: string) {
-  if (!confirm(`Reset daily quota for all users in "${labName}"?\n\nThis frees today's quota usage for everyone in this lab. Submissions remain in the audit log.`)) {
-    return;
-  }
-  resetting.value = labId;
-  resetError.value = null;
-  try {
-    const res = await fetch(`/api/admin/labs/${labId}/quota/reset`, {
-      method: 'POST',
-      headers: authorizedAdminHeaders(),
-    });
-    if (!res.ok) {
-      resetError.value = await readAPIError(res, 'Failed to reset quota');
-      return;
-    }
-    const data = (await res.json()) as { rows_affected: number };
-    alert(`Quota reset. ${data.rows_affected} submission(s) cleared.`);
-  } catch {
-    resetError.value = 'Network error — quota reset failed';
-  } finally {
-    resetting.value = null;
-  }
+function onPickAction(lab: PublicLab, action: QuotaAction) {
+  dialogLab.value = lab;
+  dialogAction.value = action;
 }
+
+function onDialogClose() {
+  dialogAction.value = null;
+  dialogLab.value = null;
+}
+
+function onDialogDone(summary: string) {
+  flash.value = summary;
+  dialogAction.value = null;
+  dialogLab.value = null;
+  window.setTimeout(() => {
+    if (flash.value === summary) flash.value = null;
+  }, 4000);
+}
+
+onMounted(() => void loadLabs());
 </script>
 
 <template>
@@ -104,24 +104,27 @@ async function resetQuota(labId: string, labName: string) {
               class="button button--secondary"
               :to="{ name: 'admin-queue', params: { labID: lab.id } }"
             >Queue</RouterLink>
-            <button
-              type="button"
-              class="button button--secondary"
-              :disabled="resetting === lab.id"
-              @click="resetQuota(lab.id, lab.name)"
-            >{{ resetting === lab.id ? 'Resetting…' : 'Reset Quota' }}</button>
+            <LabActionsMenu :lab-id="lab.id" @pick="(action) => onPickAction(lab, action)" />
           </div>
         </article>
       </div>
     </div>
 
-    <p v-if="resetError" class="admin-labs__status admin-labs__status--error">{{ resetError }}</p>
+    <p v-if="flash" class="admin-labs__flash" data-testid="admin-labs-flash">{{ flash }}</p>
 
     <LabEditDrawer
       :lab-id="drawerLabId"
       :open="drawerOpen"
       @close="onDrawerClose"
       @saved="onDrawerSaved"
+    />
+
+    <QuotaActionDialog
+      :lab-id="dialogLab?.id ?? ''"
+      :lab-name="dialogLab?.name ?? ''"
+      :action="dialogAction"
+      @close="onDialogClose"
+      @done="onDialogDone"
     />
   </AdminShell>
 </template>
@@ -206,5 +209,15 @@ async function resetQuota(labId: string, labName: string) {
   gap: 8px;
   align-items: center;
   flex-shrink: 0;
+}
+
+.admin-labs__flash {
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
 }
 </style>

@@ -62,6 +62,71 @@ func (q *Queries) CountSubmissionQuotaUsage(ctx context.Context, arg CountSubmis
 	return count, err
 }
 
+const createBonusSubmission = `-- name: CreateBonusSubmission :one
+INSERT INTO submissions (
+    user_id, lab_id, key_id, artifact_key, content_hash, status,
+    verdict, message, detail, image_digest, started_at, finished_at,
+    quota_state
+)
+VALUES (
+    $1, $2, $3, $4, $5, $6,
+    $7, $8, $9, $10, $11, $12,
+    'bonus'
+)
+RETURNING id, user_id, lab_id, key_id, artifact_key, content_hash, status, verdict, message, detail, image_digest, started_at, finished_at, created_at, quota_state
+`
+
+type CreateBonusSubmissionParams struct {
+	UserID      int64              `json:"user_id"`
+	LabID       string             `json:"lab_id"`
+	KeyID       int64              `json:"key_id"`
+	ArtifactKey string             `json:"artifact_key"`
+	ContentHash string             `json:"content_hash"`
+	Status      string             `json:"status"`
+	Verdict     pgtype.Text        `json:"verdict"`
+	Message     pgtype.Text        `json:"message"`
+	Detail      []byte             `json:"detail"`
+	ImageDigest pgtype.Text        `json:"image_digest"`
+	StartedAt   pgtype.Timestamptz `json:"started_at"`
+	FinishedAt  pgtype.Timestamptz `json:"finished_at"`
+}
+
+func (q *Queries) CreateBonusSubmission(ctx context.Context, arg CreateBonusSubmissionParams) (Submissions, error) {
+	row := q.db.QueryRow(ctx, createBonusSubmission,
+		arg.UserID,
+		arg.LabID,
+		arg.KeyID,
+		arg.ArtifactKey,
+		arg.ContentHash,
+		arg.Status,
+		arg.Verdict,
+		arg.Message,
+		arg.Detail,
+		arg.ImageDigest,
+		arg.StartedAt,
+		arg.FinishedAt,
+	)
+	var i Submissions
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.LabID,
+		&i.KeyID,
+		&i.ArtifactKey,
+		&i.ContentHash,
+		&i.Status,
+		&i.Verdict,
+		&i.Message,
+		&i.Detail,
+		&i.ImageDigest,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.CreatedAt,
+		&i.QuotaState,
+	)
+	return i, err
+}
+
 const createFreeSubmission = `-- name: CreateFreeSubmission :one
 INSERT INTO submissions (
     user_id, lab_id, key_id, artifact_key, content_hash, status,

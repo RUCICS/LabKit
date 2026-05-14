@@ -60,6 +60,21 @@ func (r *repo) AdminResetLabQuotaToday(ctx context.Context, labID string, window
 	})
 }
 
+func (r *repo) CountLabParticipants(ctx context.Context, labID string) (int64, error) {
+	return r.store.CountLabParticipants(ctx, labID)
+}
+
+func (r *repo) AdjustBonusQuotaForLab(ctx context.Context, labID string, delta int) (int64, error) {
+	return r.store.AdjustBonusQuotaForLab(ctx, sqlc.AdjustBonusQuotaForLabParams{
+		LabID: labID,
+		Delta: int32(delta),
+	})
+}
+
+func (r *repo) ResetBonusQuotaForLab(ctx context.Context, labID string) (int64, error) {
+	return r.store.ResetBonusQuotaForLab(ctx, labID)
+}
+
 func (r *repo) BeginTx(ctx context.Context) (Tx, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {

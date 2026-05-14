@@ -99,6 +99,13 @@ type UserKeys struct {
 	Fingerprint pgtype.Text        `json:"fingerprint"`
 }
 
+type UserLabBonusQuota struct {
+	UserID    int64              `json:"user_id"`
+	LabID     string             `json:"lab_id"`
+	Remaining int32              `json:"remaining"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Users struct {
 	ID        int64              `json:"id"`
 	StudentID string             `json:"student_id"`

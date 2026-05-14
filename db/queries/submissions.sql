@@ -22,6 +22,19 @@ VALUES (
 )
 RETURNING *;
 
+-- name: CreateBonusSubmission :one
+INSERT INTO submissions (
+    user_id, lab_id, key_id, artifact_key, content_hash, status,
+    verdict, message, detail, image_digest, started_at, finished_at,
+    quota_state
+)
+VALUES (
+    $1, $2, $3, $4, $5, $6,
+    $7, $8, $9, $10, $11, $12,
+    'bonus'
+)
+RETURNING *;
+
 -- name: GetSubmission :one
 SELECT *
 FROM submissions

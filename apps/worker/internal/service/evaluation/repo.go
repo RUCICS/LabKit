@@ -5,6 +5,7 @@ import (
 
 	"labkit.local/packages/go/db/sqlc"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -40,6 +41,10 @@ func (tx *storeTx) UpdateSubmissionResult(ctx context.Context, arg sqlc.UpdateSu
 
 func (tx *storeTx) UpdateSubmissionQuotaState(ctx context.Context, arg sqlc.UpdateSubmissionQuotaStateParams) error {
 	return tx.queries.UpdateSubmissionQuotaState(ctx, arg)
+}
+
+func (tx *storeTx) RefundBonusSubmission(ctx context.Context, id uuid.UUID) (int64, error) {
+	return tx.queries.RefundBonusSubmission(ctx, id)
 }
 
 func (tx *storeTx) CreateScore(ctx context.Context, arg sqlc.CreateScoreParams) error {
