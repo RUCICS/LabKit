@@ -20,9 +20,49 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - uses: googleapis/release-please-action@v4
+        id: release
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  # When the release-please-action above creates a new GitHub Release, the
+  # tag it pushes is authored by the default GITHUB_TOKEN, which GitHub's
+  # anti-recursion guard prevents from firing `on: push: tags` workflows.
+  # That's why a separate release-cli.yml listening on `v*` tag pushes
+  # silently fails for release-please-created tags. To avoid depending on a
+  # PAT/App token in `RELEASE_PLEASE_TOKEN` (which has historically expired
+  # and broken releases), we build artifacts in this same workflow,
+  # conditional on release-please's `release_created` output.
+  goreleaser:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run CLI tests
+        run: go test -mod=readonly ./apps/cli/...
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean --config .goreleaser-cli.yml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOFLAGS: -mod=readonly
