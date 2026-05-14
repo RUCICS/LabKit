@@ -21,8 +21,15 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
+      # release-please-action runs in monorepo mode here because
+      # .release-please-config.json declares a `packages` map (even though
+      # there is currently only one package). In that mode the top-level
+      # `release_created` / `tag_name` outputs are NOT set — those exist
+      # only in single-package mode. Instead we read:
+      #   - `releases_created`: top-level boolean ("any package released")
+      #   - `<path>--tag_name`: tag name for the specific package path
+      release_created: ${{ steps.release.outputs.releases_created }}
+      tag_name: ${{ steps.release.outputs['apps/cli--tag_name'] }}
     steps:
       - uses: googleapis/release-please-action@v4
         id: release
@@ -38,7 +45,7 @@ jobs:
   # silently fails for release-please-created tags. To avoid depending on a
   # PAT/App token in `RELEASE_PLEASE_TOKEN` (which has historically expired
   # and broken releases), we build artifacts in this same workflow,
-  # conditional on release-please's `release_created` output.
+  # conditional on release-please's release output.
   goreleaser:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
