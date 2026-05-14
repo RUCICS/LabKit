@@ -1,14 +1,17 @@
 package commands
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"runtime"
 	"strings"
 	"time"
 
 	selfupdate "github.com/creativeprojects/go-selfupdate"
+	"github.com/creativeprojects/go-selfupdate/update"
 	"github.com/spf13/cobra"
 
 	"labkit.local/apps/cli/internal/buildinfo"
@@ -21,6 +24,13 @@ const (
 	updateReminderTimeout   = 2 * time.Second
 	updateExplicitTimeout   = 30 * time.Second
 	updateChecksumsFileName = "checksums.txt"
+	// archiveBinaryName is the basename of the executable produced inside
+	// LabKit's release tarballs (see .goreleaser-cli.yml: binary template
+	// "labkit-{{ .Os }}-{{ .Arch }}"). go-selfupdate matches files inside the
+	// archive against this name via a regex anchored at its start; pinning it
+	// here means self-update keeps working even if a downstream course
+	// renames the on-disk binary (e.g. CoLab's "colab" wrapper).
+	archiveBinaryName = "labkit"
 )
 
 type updateOptions struct {
@@ -87,7 +97,7 @@ func NewUpdateCommand(deps *Dependencies) *cobra.Command {
 				return fmt.Errorf("could not locate executable: %w", err)
 			}
 
-			if err := updater.UpdateTo(ctx, release, exe); err != nil {
+			if err := applyUpdate(ctx, release, exe); err != nil {
 				return friendlyUpdateError(err)
 			}
 
@@ -214,7 +224,7 @@ func platformLabel() string {
 }
 
 func newGitHubUpdater(prerelease bool) (*selfupdate.Updater, error) {
-	source, err := selfupdate.NewGitHubSource(selfupdate.GitHubConfig{})
+	source, err := newGitHubSource()
 	if err != nil {
 		return nil, err
 	}
@@ -224,6 +234,66 @@ func newGitHubUpdater(prerelease bool) (*selfupdate.Updater, error) {
 		Draft:      false,
 		Validator:  &selfupdate.ChecksumValidator{UniqueFilename: updateChecksumsFileName},
 	})
+}
+
+func newGitHubSource() (*selfupdate.GitHubSource, error) {
+	return selfupdate.NewGitHubSource(selfupdate.GitHubConfig{})
+}
+
+// applyUpdate downloads, validates, and installs a release.
+//
+// We deliberately do not use Updater.UpdateTo here. That method derives the
+// in-archive executable name from the running binary's filename, which breaks
+// the moment anyone renames the binary (e.g. CoLab ships LabKit as "colab"
+// for course branding). Instead we pin the lookup name to archiveBinaryName
+// ("labkit"), matching the basename GoReleaser actually writes into the
+// tarball, then apply the decompressed bytes to whatever exePath happens to
+// be on disk.
+func applyUpdate(ctx context.Context, release *selfupdate.Release, exePath string) error {
+	if release == nil {
+		return fmt.Errorf("no release to apply")
+	}
+
+	source, err := newGitHubSource()
+	if err != nil {
+		return err
+	}
+
+	assetData, err := downloadAsset(ctx, source, release, release.AssetID)
+	if err != nil {
+		return fmt.Errorf("download asset: %w", err)
+	}
+
+	validator := &selfupdate.ChecksumValidator{UniqueFilename: updateChecksumsFileName}
+	checksumData, err := downloadAsset(ctx, source, release, release.ValidationAssetID)
+	if err != nil {
+		return fmt.Errorf("download checksums: %w", err)
+	}
+	if err := validator.Validate(release.AssetName, assetData, checksumData); err != nil {
+		return fmt.Errorf("checksum validation failed: %w", err)
+	}
+
+	exeReader, err := selfupdate.DecompressCommand(
+		bytes.NewReader(assetData),
+		release.AssetName,
+		archiveBinaryName,
+		runtime.GOOS,
+		runtime.GOARCH,
+	)
+	if err != nil {
+		return err
+	}
+
+	return update.Apply(exeReader, update.Options{TargetPath: exePath})
+}
+
+func downloadAsset(ctx context.Context, source *selfupdate.GitHubSource, rel *selfupdate.Release, assetID int64) ([]byte, error) {
+	rc, err := source.DownloadReleaseAsset(ctx, rel, assetID)
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	return io.ReadAll(rc)
 }
 
 func friendlyUpdateError(err error) error {
