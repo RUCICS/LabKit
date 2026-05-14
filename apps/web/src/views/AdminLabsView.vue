@@ -13,6 +13,8 @@ const loading = ref(true);
 const error = ref<string | null>(null);
 const drawerLabId = ref<string | null>(null);
 const drawerOpen = ref(false);
+const resetting = ref<string | null>(null);
+const resetError = ref<string | null>(null);
 
 async function loadLabs() {
   loading.value = true;
@@ -48,6 +50,30 @@ function labPhase(lab: PublicLab) {
 }
 
 onMounted(() => void loadLabs());
+
+async function resetQuota(labId: string, labName: string) {
+  if (!confirm(`Reset daily quota for all users in "${labName}"?\n\nThis marks today's charged submissions as free so everyone can submit again.`)) {
+    return;
+  }
+  resetting.value = labId;
+  resetError.value = null;
+  try {
+    const res = await fetch(`/api/admin/labs/${labId}/quota/reset`, {
+      method: 'POST',
+      headers: authorizedAdminHeaders(),
+    });
+    if (!res.ok) {
+      resetError.value = await readAPIError(res, 'Failed to reset quota');
+      return;
+    }
+    const data = (await res.json()) as { rows_affected: number };
+    alert(`Quota reset. ${data.rows_affected} submission(s) freed.`);
+  } catch {
+    resetError.value = 'Network error — quota reset failed';
+  } finally {
+    resetting.value = null;
+  }
+}
 </script>
 
 <template>
@@ -78,10 +104,18 @@ onMounted(() => void loadLabs());
               class="button button--secondary"
               :to="{ name: 'admin-queue', params: { labID: lab.id } }"
             >Queue</RouterLink>
+            <button
+              type="button"
+              class="button button--secondary"
+              :disabled="resetting === lab.id"
+              @click="resetQuota(lab.id, lab.name)"
+            >{{ resetting === lab.id ? 'Resetting…' : 'Reset Quota' }}</button>
           </div>
         </article>
       </div>
     </div>
+
+    <p v-if="resetError" class="admin-labs__status admin-labs__status--error">{{ resetError }}</p>
 
     <LabEditDrawer
       :lab-id="drawerLabId"
