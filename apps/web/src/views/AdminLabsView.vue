@@ -52,7 +52,7 @@ function labPhase(lab: PublicLab) {
 onMounted(() => void loadLabs());
 
 async function resetQuota(labId: string, labName: string) {
-  if (!confirm(`Reset daily quota for all users in "${labName}"?\n\nThis marks today's charged submissions as free so everyone can submit again.`)) {
+  if (!confirm(`Reset daily quota for all users in "${labName}"?\n\nThis frees today's quota usage for everyone in this lab. Submissions remain in the audit log.`)) {
     return;
   }
   resetting.value = labId;
@@ -67,7 +67,7 @@ async function resetQuota(labId: string, labName: string) {
       return;
     }
     const data = (await res.json()) as { rows_affected: number };
-    alert(`Quota reset. ${data.rows_affected} submission(s) freed.`);
+    alert(`Quota reset. ${data.rows_affected} submission(s) cleared.`);
   } catch {
     resetError.value = 'Network error — quota reset failed';
   } finally {
