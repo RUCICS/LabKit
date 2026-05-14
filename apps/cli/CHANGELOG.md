@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.5](https://github.com/RUCICS/LabKit/compare/v0.1.4...v0.1.5) (2026-05-14)
+
+
+### Features
+
+* add bonus submission quota with admin grant/revoke ([c520fa2](https://github.com/RUCICS/LabKit/commit/c520fa26ad874f17e5515f5cefcb8d14d03b8488))
+* **cli:** use API rank directly, drop local nextRank counter ([e89fca9](https://github.com/RUCICS/LabKit/commit/e89fca9b4b4754ab6f462827555e62b87ec34152))
+
+
+### Bug Fixes
+
+* **auth:** make device auth completion idempotent ([1db9ef9](https://github.com/RUCICS/LabKit/commit/1db9ef9765bf934df787a2512b82c8dcc11a75b5))
+
 ## [0.1.4](https://github.com/RUCICS/LabKit/compare/v0.1.3...v0.1.4) (2026-04-27)
 
 
