@@ -209,6 +209,32 @@ func TestPersistSettlesQuotaStateFromVerdict(t *testing.T) {
 	}
 }
 
+func TestPersistPreservesFreeQuotaState(t *testing.T) {
+	repo := newFakeRepository()
+	svc := newTestService(repo)
+
+	submission := seededSubmission("bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb", 7, "sorting")
+	submission.QuotaState = "free"
+	repo.submissions[submission.ID] = submission
+
+	err := svc.Persist(context.Background(), PersistInput{
+		Manifest:   testManifest(t),
+		Submission: submission,
+		Result: evaluator.Result{
+			Verdict: evaluator.VerdictScored,
+			Message: "scored",
+			Scores:  map[string]float64{"throughput": 1.0, "latency": 1.0},
+		},
+		FinishedAt: time.Date(2026, 3, 31, 13, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("Persist() error = %v", err)
+	}
+	if got := repo.submissions[submission.ID].QuotaState; got != "free" {
+		t.Fatalf("quota_state = %q, want %q (free submission must not be charged)", got, "free")
+	}
+}
+
 func TestPersistInvalidEvaluatorOutputReturnsEvaluatorErrorWithoutTransaction(t *testing.T) {
 	repo := newFakeRepository()
 	svc := newTestService(repo)

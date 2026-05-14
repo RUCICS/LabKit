@@ -103,9 +103,13 @@ func (s *Service) Persist(ctx context.Context, in PersistInput) (err error) {
 	}); err != nil {
 		return err
 	}
+	newQuotaState := quotaStateFor(in.Manifest, in.Result.Verdict)
+	if in.Submission.QuotaState == "free" {
+		newQuotaState = "free"
+	}
 	if err := tx.UpdateSubmissionQuotaState(ctx, sqlc.UpdateSubmissionQuotaStateParams{
 		ID:         in.Submission.ID,
-		QuotaState: quotaStateFor(in.Manifest, in.Result.Verdict),
+		QuotaState: newQuotaState,
 	}); err != nil {
 		return err
 	}
