@@ -18,11 +18,12 @@ async function mountTable(props: {
   }>;
   metrics: Array<{ id: string; name: string; sort: 'asc' | 'desc' }>;
   selectedMetricId: string;
+  rankAll?: boolean;
   apiHint?: string;
 }) {
   const el = document.createElement('div');
   document.body.appendChild(el);
-  const app = createApp(LeaderboardTable, props);
+  const app = createApp(LeaderboardTable, { rankAll: true, ...props });
   app.mount(el);
   await flushPromises();
   return {
@@ -84,7 +85,8 @@ describe('LeaderboardTable', () => {
           updated_at: '2026-03-31T09:00:00Z'
         },
         {
-          rank: 2,
+          // Non-participating (latency_ms track, not runtime_ms) → rank 0 from API
+          rank: 0,
           nickname: 'Bob',
           track: 'latency_ms',
           scores: [
@@ -94,7 +96,8 @@ describe('LeaderboardTable', () => {
           updated_at: '2026-03-31T10:00:00Z'
         },
         {
-          rank: 3,
+          // Non-participating (no track) → rank 0 from API
+          rank: 0,
           nickname: 'NoTrack',
           scores: [
             { metric_id: 'runtime_ms', value: 70 },
@@ -103,7 +106,8 @@ describe('LeaderboardTable', () => {
           updated_at: '2026-03-31T11:00:00Z'
         },
         {
-          rank: 4,
+          // Carol participates in runtime_ms, so the API assigns rank 2
+          rank: 2,
           nickname: 'Carol',
           track: 'runtime_ms',
           scores: [
@@ -133,7 +137,7 @@ describe('LeaderboardTable', () => {
     expect(rows[2]?.textContent).toContain('—');
     expect(rows[2]?.classList.contains('board-table__row--unranked')).toBe(true);
 
-    // Carol participates in runtime_ms, so her display rank should be 2 (Bob and NoTrack do not consume a rank).
+    // Carol participates in runtime_ms; the API assigned her rank 2.
     expect(rows[3]?.textContent).toContain('2');
     expect(rows[3]?.classList.contains('board-table__row--unranked')).toBe(false);
 

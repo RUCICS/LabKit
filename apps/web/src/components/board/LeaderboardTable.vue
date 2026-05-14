@@ -7,6 +7,7 @@ const props = defineProps<{
   rows: LeaderboardRow[];
   metrics: LeaderboardMetric[];
   selectedMetricId: string;
+  rankAll: boolean;
   closeAt?: string;
   apiHint: string;
   metricUnits?: Record<string, string>;
@@ -86,25 +87,15 @@ function trackClass(track: string | undefined) {
   return `board-table__track-indicator--${metricTone(index)}`;
 }
 
-function participatesInSelectedTrack(row: LeaderboardRow) {
-  if (!isTrackBased.value) {
-    return true;
-  }
-  return !!row.track && row.track === props.selectedMetricId;
-}
-
-const rowsWithDisplayRank = computed(() => {
-  let nextRank = 1;
-  return props.rows.map((row) => {
-    const participates = participatesInSelectedTrack(row);
-    const displayRank = participates ? nextRank++ : null;
-    return {
-      row,
-      participates,
-      displayRank
-    };
-  });
-});
+const rowsWithDisplayRank = computed(() =>
+  props.rows.map((row) => {
+    const participates =
+      !isTrackBased.value ||
+      (!!row.track && row.track === props.selectedMetricId);
+    const displayRank = row.rank > 0 ? row.rank : null;
+    return { row, participates, displayRank };
+  })
+);
 </script>
 
 <template>

@@ -265,6 +265,7 @@ onBeforeUnmount(() => {
           :rows="board.rows"
           :metrics="board.metrics"
           :selected-metric-id="activeMetric"
+          :rank-all="board.rank_all"
           :close-at="closeISO"
           :api-hint="`GET /api/labs/${board.lab_id}/board`"
           :metric-units="metricUnits"

@@ -31,6 +31,7 @@ export interface LeaderboardRow {
 export interface LeaderboardBoard {
   lab_id: string;
   selected_metric: string;
+  rank_all: boolean;
   metrics: LeaderboardMetric[];
   rows: LeaderboardRow[];
   quota?: QuotaSummary;
