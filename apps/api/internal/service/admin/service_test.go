@@ -305,6 +305,8 @@ type adminTestRepo struct {
 	tx                   *adminTestTx
 	queueCalls           int
 	listLeaderboardCalls int
+	resetQuotaCallCount  int
+	lastResetLabID       string
 }
 
 func newAdminTestRepo(t *testing.T) *adminTestRepo {
@@ -618,4 +620,29 @@ func (tx *adminTestTx) Commit(context.Context) error {
 func (tx *adminTestTx) Rollback(context.Context) error {
 	tx.rollbackCalls++
 	return nil
+}
+
+func (r *adminTestRepo) AdminResetLabQuotaToday(_ context.Context, labID string, _ time.Time) (int64, error) {
+	r.resetQuotaCallCount++
+	r.lastResetLabID = labID
+	return int64(r.resetQuotaCallCount), nil
+}
+
+func TestResetLabQuotaMarksChargingSubmissionsAsAdminReset(t *testing.T) {
+	repo := newAdminTestRepo(t)
+	svc := NewService(repo)
+
+	result, err := svc.ResetLabQuota(context.Background(), "sorting")
+	if err != nil {
+		t.Fatalf("ResetLabQuota() error = %v", err)
+	}
+	if result.RowsAffected != int64(repo.resetQuotaCallCount) {
+		t.Fatalf("RowsAffected = %d, want %d", result.RowsAffected, repo.resetQuotaCallCount)
+	}
+	if repo.resetQuotaCallCount != 1 {
+		t.Fatalf("AdminResetLabQuotaToday called %d times, want 1", repo.resetQuotaCallCount)
+	}
+	if repo.lastResetLabID != "sorting" {
+		t.Fatalf("reset lab_id = %q, want %q", repo.lastResetLabID, "sorting")
+	}
 }

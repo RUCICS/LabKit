@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"labkit.local/apps/api/internal/service/submissions"
 	"labkit.local/packages/go/db/sqlc"
 	"labkit.local/packages/go/manifest"
 
@@ -33,6 +34,7 @@ type Repository interface {
 	ListLabProfilesByLab(context.Context, string) ([]sqlc.LabProfiles, error)
 	ListScoresByLab(context.Context, string) ([]sqlc.Scores, error)
 	ListRecentEvaluationJobsByLab(context.Context, sqlc.ListRecentEvaluationJobsByLabParams) ([]sqlc.ListRecentEvaluationJobsByLabRow, error)
+	AdminResetLabQuotaToday(context.Context, string, time.Time) (int64, error)
 	BeginTx(context.Context) (Tx, error)
 }
 
@@ -45,8 +47,9 @@ type Tx interface {
 }
 
 type Service struct {
-	repo Repository
-	now  func() time.Time
+	repo          Repository
+	now           func() time.Time
+	quotaLocation *time.Location
 }
 
 type ExportGradesResult struct {
@@ -104,7 +107,35 @@ type gradeRow struct {
 }
 
 func NewService(repo Repository) *Service {
-	return &Service{repo: repo, now: time.Now}
+	return &Service{
+		repo:          repo,
+		now:           time.Now,
+		quotaLocation: submissions.DefaultQuotaLocation(),
+	}
+}
+
+func (s *Service) nowUTC() time.Time {
+	return s.now().UTC()
+}
+
+func (s *Service) quotaLocationOrDefault() *time.Location {
+	if s.quotaLocation != nil {
+		return s.quotaLocation
+	}
+	return submissions.DefaultQuotaLocation()
+}
+
+type ResetLabQuotaResult struct {
+	RowsAffected int64 `json:"rows_affected"`
+}
+
+func (s *Service) ResetLabQuota(ctx context.Context, labID string) (ResetLabQuotaResult, error) {
+	windowStart, _ := submissions.QuotaWindowForTime(s.nowUTC(), s.quotaLocationOrDefault())
+	n, err := s.repo.AdminResetLabQuotaToday(ctx, labID, windowStart)
+	if err != nil {
+		return ResetLabQuotaResult{}, err
+	}
+	return ResetLabQuotaResult{RowsAffected: n}, nil
 }
 
 func (s *Service) ExportGrades(ctx context.Context, labID string) (ExportGradesResult, error) {

@@ -2,12 +2,14 @@ package admin
 
 import (
 	"context"
+	"time"
 
 	dbpkg "labkit.local/packages/go/db"
 	"labkit.local/packages/go/db/sqlc"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -49,6 +51,13 @@ func (r *repo) ListScoresByLab(ctx context.Context, labID string) ([]sqlc.Scores
 
 func (r *repo) ListRecentEvaluationJobsByLab(ctx context.Context, arg sqlc.ListRecentEvaluationJobsByLabParams) ([]sqlc.ListRecentEvaluationJobsByLabRow, error) {
 	return r.store.ListRecentEvaluationJobsByLab(ctx, arg)
+}
+
+func (r *repo) AdminResetLabQuotaToday(ctx context.Context, labID string, windowStart time.Time) (int64, error) {
+	return r.store.AdminResetLabQuotaToday(ctx, sqlc.AdminResetLabQuotaTodayParams{
+		LabID:     labID,
+		CreatedAt: pgtype.Timestamptz{Time: windowStart, Valid: true},
+	})
 }
 
 func (r *repo) BeginTx(ctx context.Context) (Tx, error) {
