@@ -26,7 +26,7 @@ LabKit is a single-course ICS lab leaderboard platform with a Go API, Go CLI, Go
 Prerequisites:
 
 - Go `1.26.1`
-- Node `22+` and `npm`
+- Node `22+` and `pnpm` (enabled via `corepack enable`)
 - Docker with Compose support
 - `bash`, `curl`, and `python3`
 
@@ -34,7 +34,7 @@ Start the local stack:
 
 ```bash
 cp deploy/.env.example deploy/.env
-cd apps/web && npm ci && cd ../..
+cd apps/web && pnpm ci && cd ../..
 bash scripts/dev-up.sh
 ```
 
@@ -233,8 +233,8 @@ Further references:
 ## Verification
 
 - `go test ./...`
-- `cd apps/web && npm test`
-- `cd apps/web && npm run build`
+- `cd apps/web && pnpm test`
+- `cd apps/web && pnpm run build`
 - `bash db/migrations/schema_smoke_test.sh`
 - `bash scripts/deploy_smoke_test.sh`
 - `bash scripts/e2e-happy-path.sh`
@@ -251,8 +251,8 @@ Further references:
 Current baseline:
 
 - [x] `go test ./...`
-- [x] `cd apps/web && npm test`
-- [x] `cd apps/web && npm run build`
+- [x] `cd apps/web && pnpm test`
+- [x] `cd apps/web && pnpm run build`
 - [x] `bash db/migrations/schema_smoke_test.sh`
 - [x] `bash scripts/deploy_smoke_test.sh`
 - [x] `bash scripts/e2e-happy-path.sh`

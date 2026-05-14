@@ -3,6 +3,7 @@
 bin/
 dist/
 node_modules/
+apps/web/package-lock.json
 coverage/
 tmp/
 *.sqlite
