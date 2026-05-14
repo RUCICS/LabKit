@@ -42,6 +42,7 @@ type Service struct {
 type Board struct {
 	LabID          string                      `json:"lab_id"`
 	SelectedMetric string                      `json:"selected_metric"`
+	RankAll        bool                        `json:"rank_all"`
 	Metrics        []BoardMetric               `json:"metrics"`
 	Rows           []BoardRow                  `json:"rows"`
 	Quota          *submissionsvc.QuotaSummary `json:"quota,omitempty"`
@@ -183,8 +184,16 @@ func (s *Service) GetBoard(ctx context.Context, labID, by string, viewerUserID i
 			Selected: metric.ID == selectedMetric.ID,
 		})
 	}
+	rankAll := parsed.Board.IsRankAll()
+	board.RankAll = rankAll
+	nextRank := 1
 	for i := range rows {
-		rows[i].row.Rank = i + 1
+		trackMatches := !parsed.Board.Pick ||
+			strings.EqualFold(rows[i].row.Track, board.SelectedMetric)
+		if rankAll || trackMatches {
+			rows[i].row.Rank = nextRank
+			nextRank++
+		}
 		board.Rows = append(board.Rows, rows[i].row)
 	}
 	if viewerUserID != 0 {

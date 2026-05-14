@@ -273,6 +273,45 @@ visible = 2026-03-30T00:00:00Z
 open = 2026-03-31T00:00:00Z
 close = 2026-04-30T00:00:00Z
 `, time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC)),
+			"picksort-exclusive": mustLabRow(`
+[lab]
+id = "picksort-exclusive"
+name = "Pick Sort Exclusive"
+
+[submit]
+files = ["main.py"]
+max_size = "1MB"
+
+[eval]
+image = "ghcr.io/labkit/picksort:1"
+timeout = 60
+
+[quota]
+daily = 3
+free = ["build_failed"]
+
+[[metric]]
+id = "throughput"
+name = "Throughput"
+sort = "desc"
+unit = "x"
+
+[[metric]]
+id = "latency"
+name = "Latency"
+sort = "asc"
+unit = "ms"
+
+[board]
+rank_by = "throughput"
+pick = true
+rank_all = false
+
+[schedule]
+visible = 2026-03-30T00:00:00Z
+open = 2026-03-31T00:00:00Z
+close = 2026-04-30T00:00:00Z
+`, time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC)),
 			"hidden": mustLabRow(`
 [lab]
 id = "hidden"
@@ -348,6 +387,10 @@ close = 2026-04-30T00:00:00Z
 				{UserID: 4, LabID: "picksort", SubmissionID: uuid.MustParse("44444444-4444-7444-8444-444444444444"), UpdatedAt: timestamptz(time.Date(2026, 3, 31, 11, 30, 0, 0, time.UTC))},
 				{UserID: 5, LabID: "picksort", SubmissionID: uuid.MustParse("55555555-5555-7555-8555-555555555555"), UpdatedAt: timestamptz(time.Date(2026, 3, 31, 10, 30, 0, 0, time.UTC))},
 			},
+			"picksort-exclusive": {
+				{UserID: 4, LabID: "picksort-exclusive", SubmissionID: uuid.MustParse("44444444-4444-7444-8444-444444444444"), UpdatedAt: timestamptz(time.Date(2026, 3, 31, 11, 30, 0, 0, time.UTC))},
+				{UserID: 5, LabID: "picksort-exclusive", SubmissionID: uuid.MustParse("55555555-5555-7555-8555-555555555555"), UpdatedAt: timestamptz(time.Date(2026, 3, 31, 10, 30, 0, 0, time.UTC))},
+			},
 			"tiecase": {
 				{UserID: 7, LabID: "tiecase", SubmissionID: uuid.MustParse("77777777-7777-7777-8777-777777777777"), UpdatedAt: timestamptz(time.Date(2026, 3, 31, 11, 15, 0, 0, time.UTC))},
 				{UserID: 6, LabID: "tiecase", SubmissionID: uuid.MustParse("66666666-6666-7666-8666-666666666666"), UpdatedAt: timestamptz(time.Date(2026, 3, 31, 11, 15, 0, 0, time.UTC))},
@@ -390,6 +433,10 @@ close = 2026-04-30T00:00:00Z
 			"picksort": {
 				{UserID: 4, LabID: "picksort", Nickname: "Ada (lab)", Track: text("throughput")},
 				{UserID: 5, LabID: "picksort", Nickname: "Bob (lab)", Track: text("latency")},
+			},
+			"picksort-exclusive": {
+				{UserID: 4, LabID: "picksort-exclusive", Nickname: "Ada (lab)", Track: text("throughput")},
+				{UserID: 5, LabID: "picksort-exclusive", Nickname: "Bob (lab)", Track: text("latency")},
 			},
 			"tiecase": {
 				{UserID: 7, LabID: "tiecase", Nickname: "Beta (lab)"},
@@ -532,4 +579,57 @@ func scoreForMetric(scores []sqlc.Scores, metricID string) float32 {
 		}
 	}
 	return 0
+}
+
+func TestGetBoardRankAllTrueAssignsRanksToAllUsers(t *testing.T) {
+	repo := newFakeRepository()
+	svc := newTestService(repo, time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC))
+
+	// picksort has pick=true and rank_all defaults to true
+	board, err := svc.GetBoard(context.Background(), "picksort", "throughput", 0)
+	if err != nil {
+		t.Fatalf("GetBoard() error = %v", err)
+	}
+
+	if !board.RankAll {
+		t.Fatal("Board.RankAll = false, want true")
+	}
+	if len(board.Rows) != 2 {
+		t.Fatalf("len(rows) = %d, want 2", len(board.Rows))
+	}
+	// Both users ranked even though Bob selected "latency" track
+	if got := board.Rows[0].Rank; got != 1 {
+		t.Fatalf("first row rank = %d, want 1", got)
+	}
+	if got := board.Rows[1].Rank; got != 2 {
+		t.Fatalf("second row rank = %d, want 2", got)
+	}
+}
+
+func TestGetBoardRankAllFalseOnlyTrackMatchersGetRank(t *testing.T) {
+	repo := newFakeRepository()
+	svc := newTestService(repo, time.Date(2026, 3, 31, 12, 0, 0, 0, time.UTC))
+
+	// picksort-exclusive has pick=true, rank_all=false
+	board, err := svc.GetBoard(context.Background(), "picksort-exclusive", "throughput", 0)
+	if err != nil {
+		t.Fatalf("GetBoard() error = %v", err)
+	}
+
+	if board.RankAll {
+		t.Fatal("Board.RankAll = true, want false")
+	}
+	if len(board.Rows) != 2 {
+		t.Fatalf("len(rows) = %d, want 2", len(board.Rows))
+	}
+	// Ada selected "throughput" → gets rank 1
+	// Bob selected "latency" → rank 0 (no rank)
+	adaRow := board.Rows[0] // Ada is first (higher throughput=2.0)
+	bobRow := board.Rows[1]
+	if got := adaRow.Rank; got != 1 {
+		t.Fatalf("Ada rank = %d, want 1", got)
+	}
+	if got := bobRow.Rank; got != 0 {
+		t.Fatalf("Bob rank = %d, want 0 (not ranked)", got)
+	}
 }
