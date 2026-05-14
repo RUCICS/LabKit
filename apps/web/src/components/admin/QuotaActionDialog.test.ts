@@ -73,7 +73,48 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+function authHeader(init?: RequestInit): string | null {
+  if (!init?.headers) return null;
+  if (init.headers instanceof Headers) {
+    return init.headers.get('Authorization');
+  }
+  const record = init.headers as Record<string, string>;
+  return record['Authorization'] ?? record['authorization'] ?? null;
+}
+
 describe('QuotaActionDialog', () => {
+  it('sends the admin Authorization bearer on every request', async () => {
+    const authValues: Array<string | null> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        authValues.push(authHeader(init));
+        const url = String(input);
+        const body = init?.body ? JSON.parse(String(init.body)) : null;
+        if (body?.dry_run) {
+          return jsonResponse({ lab_participants: 1, dry_run: true });
+        }
+        if (url.endsWith('/quota/reset') || url.endsWith('/quota/bonus/reset')) {
+          return jsonResponse({ rows_affected: 1 });
+        }
+        return jsonResponse({ users_affected: 1 });
+      }),
+    );
+
+    const view = mount('grant-bonus');
+    await flush();
+    await flush();
+    view.confirm()!.click();
+    await flush();
+    await flush();
+
+    expect(authValues.length).toBeGreaterThan(0);
+    for (const value of authValues) {
+      expect(value).toBe('Bearer admintok');
+    }
+    view.unmount();
+  });
+
   it('shows a dry-run participant preview for grant-bonus before applying', async () => {
     const calls: Array<{ url: string; body: unknown }> = [];
     vi.stubGlobal(

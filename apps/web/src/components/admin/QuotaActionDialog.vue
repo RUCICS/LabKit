@@ -130,7 +130,7 @@ async function runPreview() {
       : cfg.previewPayload;
     const res = await fetch(cfg.previewEndpoint(), {
       method: 'POST',
-      headers: { ...authorizedAdminHeaders(), 'Content-Type': 'application/json' },
+      headers: authorizedAdminHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
     });
     if (!res.ok) {
@@ -154,7 +154,7 @@ async function previewParticipants() {
     // Server validates delta != 0, so we send 1 and ignore the response side.
     const res = await fetch(`/api/admin/labs/${encodeURIComponent(props.labId)}/quota/bonus`, {
       method: 'POST',
-      headers: { ...authorizedAdminHeaders(), 'Content-Type': 'application/json' },
+      headers: authorizedAdminHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ delta: 1, dry_run: true }),
     });
     if (!res.ok) {
@@ -179,7 +179,7 @@ async function apply() {
   try {
     const init: RequestInit = {
       method: 'POST',
-      headers: { ...authorizedAdminHeaders(), 'Content-Type': 'application/json' },
+      headers: authorizedAdminHeaders({ 'Content-Type': 'application/json' }),
     };
     if (cfg.needsDelta) {
       init.body = JSON.stringify(cfg.applyPayload());
