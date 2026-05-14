@@ -100,6 +100,7 @@ type v2ScheduleSection struct {
 type boardResponse struct {
 	LabID          string                `json:"lab_id"`
 	SelectedMetric string                `json:"selected_metric"`
+	RankAll        bool                  `json:"rank_all"`
 	Metrics        []boardMetricResponse `json:"metrics"`
 	Rows           []boardRowResponse    `json:"rows"`
 	Quota          *quotaSummaryResponse `json:"quota,omitempty"`
@@ -1158,22 +1159,9 @@ func renderBoard(out io.Writer, binaryName string, lab manifest.PublicManifest, 
 		}
 	}
 
-	displayRanks := make([]int, len(board.Rows))
-	for i := range displayRanks {
-		displayRanks[i] = -1
-	}
-	nextRank := 1
-	for i, row := range board.Rows {
-		participates := boardRowParticipatesInSelectedTrack(trackBased, board.SelectedMetric, row.Track)
-		if participates {
-			displayRanks[i] = nextRank
-			nextRank++
-		}
-	}
-
 	maxScore := float32(0)
-	for i, row := range board.Rows {
-		if displayRanks[i] < 0 {
+	for _, row := range board.Rows {
+		if row.Rank == 0 {
 			continue
 		}
 		for _, s := range row.Scores {
@@ -1184,7 +1172,7 @@ func renderBoard(out io.Writer, binaryName string, lab manifest.PublicManifest, 
 	}
 
 	now := time.Now()
-	for i, row := range board.Rows {
+	for _, row := range board.Rows {
 		scoreVal := float32(0)
 		for _, s := range row.Scores {
 			if s.MetricID == board.SelectedMetric {
@@ -1199,8 +1187,8 @@ func renderBoard(out io.Writer, binaryName string, lab manifest.PublicManifest, 
 			displayName = fmt.Sprintf("you (%s)", row.Nickname)
 		}
 
-		displayRank := displayRanks[i]
-		participates := displayRank >= 0
+		displayRank := row.Rank
+		participates := boardRowParticipatesInSelectedTrack(trackBased, board.SelectedMetric, row.Track)
 
 		var fgColor, bgColor lipgloss.Color
 		switch {
@@ -1210,7 +1198,7 @@ func renderBoard(out io.Writer, binaryName string, lab manifest.PublicManifest, 
 		case row.CurrentUser && !participates:
 			fgColor = lipgloss.Color("#7fb86a")
 			bgColor = lipgloss.Color("#2a3d28")
-		case participates && displayRank == 1:
+		case displayRank == 1:
 			fgColor = lipgloss.Color("#e0af68")
 			bgColor = lipgloss.Color("#2a2015")
 		default:
@@ -1219,7 +1207,7 @@ func renderBoard(out io.Writer, binaryName string, lab manifest.PublicManifest, 
 		}
 
 		var renderedRank string
-		if participates {
+		if displayRank > 0 {
 			renderedRank = renderBoardRankBadge(theme, displayRank)
 		} else {
 			renderedRank = ui.PadRight(theme.MutedStyle.Render("—"), rankW)
@@ -1229,7 +1217,7 @@ func renderBoard(out io.Writer, binaryName string, lab manifest.PublicManifest, 
 			ui.PadRight(updatedStr, updatedW)
 
 		fillFraction := 0.0
-		if participates && maxScore > 0 {
+		if displayRank > 0 && maxScore > 0 {
 			fillFraction = float64(scoreVal) / float64(maxScore)
 		}
 

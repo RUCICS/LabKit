@@ -280,7 +280,7 @@ func TestRenderBoardTrackBasedSkipsRankForOtherTrack(t *testing.T) {
 		},
 		Rows: []boardRowResponse{
 			{Rank: 1, Nickname: "bob", Track: "latency", Scores: []boardScoreResponse{{MetricID: "latency", Value: 35}}, UpdatedAt: time.Now().Add(-2 * time.Hour)},
-			{Rank: 2, Nickname: "ada", Track: "throughput", Scores: []boardScoreResponse{{MetricID: "latency", Value: 50}}, UpdatedAt: time.Now().Add(-1 * time.Hour)},
+			{Rank: 0, Nickname: "ada", Track: "throughput", Scores: []boardScoreResponse{{MetricID: "latency", Value: 50}}, UpdatedAt: time.Now().Add(-1 * time.Hour)},
 		},
 	}
 	if err := renderBoard(&buf, "labkit", lab, board); err != nil {
@@ -1606,7 +1606,7 @@ func TestBoardCommandDisplaysRowsByRequestedMetric(t *testing.T) {
 				},
 				"rows": []map[string]any{
 					{"rank": 1, "nickname": "Bob", "track": "latency", "scores": []map[string]any{{"metric_id": "throughput", "value": 88}, {"metric_id": "latency", "value": 35}}, "updated_at": "2026-03-31T10:00:00Z"},
-					{"rank": 2, "nickname": "Ada", "track": "throughput", "scores": []map[string]any{{"metric_id": "throughput", "value": 92}, {"metric_id": "latency", "value": 50}}, "updated_at": "2026-03-31T11:00:00Z"},
+					{"rank": 0, "nickname": "Ada", "track": "throughput", "scores": []map[string]any{{"metric_id": "throughput", "value": 92}, {"metric_id": "latency", "value": 50}}, "updated_at": "2026-03-31T11:00:00Z"},
 				},
 			})
 		default:
