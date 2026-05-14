@@ -159,11 +159,40 @@ func TestAdminHandlerGetLabDetail(t *testing.T) {
 	}
 }
 
+func TestAdminHandlerResetLabQuota(t *testing.T) {
+	router := NewRouter(
+		WithAdminToken("secret"),
+		WithAdminService(&fakeAdminService{
+			resetQuota: adminsvc.ResetLabQuotaResult{RowsAffected: 3},
+		}),
+	)
+
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/admin/labs/sorting/quota/reset", nil)
+	req.SetPathValue("labID", "sorting")
+	req.Header.Set("Authorization", "Bearer secret")
+
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+
+	var payload adminsvc.ResetLabQuotaResult
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if payload.RowsAffected != 3 {
+		t.Fatalf("rows_affected = %d, want 3", payload.RowsAffected)
+	}
+}
+
 type fakeAdminService struct {
-	export adminsvc.ExportGradesResult
-	reeval adminsvc.ReevaluateResult
-	queue  adminsvc.QueueStatus
-	lab    adminsvc.GetLabResult
+	export     adminsvc.ExportGradesResult
+	reeval     adminsvc.ReevaluateResult
+	queue      adminsvc.QueueStatus
+	lab        adminsvc.GetLabResult
+	resetQuota adminsvc.ResetLabQuotaResult
 }
 
 func (f *fakeAdminService) ExportGrades(context.Context, string) (adminsvc.ExportGradesResult, error) {
@@ -180,4 +209,8 @@ func (f *fakeAdminService) QueueStatus(context.Context, string) (adminsvc.QueueS
 
 func (f *fakeAdminService) GetLab(context.Context, string) (adminsvc.GetLabResult, error) {
 	return f.lab, nil
+}
+
+func (f *fakeAdminService) ResetLabQuota(context.Context, string) (adminsvc.ResetLabQuotaResult, error) {
+	return f.resetQuota, nil
 }

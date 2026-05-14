@@ -17,6 +17,7 @@ type AdminService interface {
 	Reevaluate(context.Context, string) (adminsvc.ReevaluateResult, error)
 	QueueStatus(context.Context, string) (adminsvc.QueueStatus, error)
 	GetLab(context.Context, string) (adminsvc.GetLabResult, error)
+	ResetLabQuota(context.Context, string) (adminsvc.ResetLabQuotaResult, error)
 }
 
 type AdminHandler struct {
@@ -88,6 +89,19 @@ func (h *AdminHandler) GetLabDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.Service.GetLab(r.Context(), r.PathValue("labID"))
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *AdminHandler) ResetLabQuota(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.Service == nil {
+		middleware.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", http.StatusText(http.StatusInternalServerError))
+		return
+	}
+	result, err := h.Service.ResetLabQuota(r.Context(), r.PathValue("labID"))
 	if err != nil {
 		h.writeError(w, r, err)
 		return
