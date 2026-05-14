@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/RUCICS/LabKit/compare/v0.1.5...v0.1.6) (2026-05-14)
+
+
+### Bug Fixes
+
+* **cli:** pin archive binary name in self-update so renamed binaries work ([a70a27c](https://github.com/RUCICS/LabKit/commit/a70a27cc67798fe0ef43c32a4b2baee9c7faac8a))
+
 ## [0.1.5](https://github.com/RUCICS/LabKit/compare/v0.1.4...v0.1.5) (2026-05-14)
 
 
