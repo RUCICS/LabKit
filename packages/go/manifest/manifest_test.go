@@ -512,3 +512,113 @@ func TestParseJSONRejectsInvalidManifest(t *testing.T) {
 		t.Fatal("Parse(bad JSON) error = nil, want validation error")
 	}
 }
+
+func TestBoardIsRankAllDefaultsTrueWhenPickEnabled(t *testing.T) {
+	m, err := Parse([]byte(`
+[lab]
+id = "lab1"
+name = "Lab"
+
+[submit]
+files = ["main.py"]
+
+[eval]
+image = "img:1"
+timeout = 60
+
+[quota]
+daily = 1
+
+[[metric]]
+id = "acc"
+sort = "desc"
+
+[board]
+rank_by = "acc"
+pick = true
+
+[schedule]
+open = 2026-05-01T00:00:00Z
+close = 2026-06-01T00:00:00Z
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if !m.Board.IsRankAll() {
+		t.Fatal("IsRankAll() = false, want true (default when pick=true)")
+	}
+}
+
+func TestBoardIsRankAllFalseWhenExplicitlySet(t *testing.T) {
+	m, err := Parse([]byte(`
+[lab]
+id = "lab1"
+name = "Lab"
+
+[submit]
+files = ["main.py"]
+
+[eval]
+image = "img:1"
+timeout = 60
+
+[quota]
+daily = 1
+
+[[metric]]
+id = "acc"
+sort = "desc"
+
+[board]
+rank_by = "acc"
+pick = true
+rank_all = false
+
+[schedule]
+open = 2026-05-01T00:00:00Z
+close = 2026-06-01T00:00:00Z
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if m.Board.IsRankAll() {
+		t.Fatal("IsRankAll() = true, want false (explicitly set to false)")
+	}
+}
+
+func TestBoardIsRankAllTrueWhenExplicitlySet(t *testing.T) {
+	m, err := Parse([]byte(`
+[lab]
+id = "lab1"
+name = "Lab"
+
+[submit]
+files = ["main.py"]
+
+[eval]
+image = "img:1"
+timeout = 60
+
+[quota]
+daily = 1
+
+[[metric]]
+id = "acc"
+sort = "desc"
+
+[board]
+rank_by = "acc"
+pick = true
+rank_all = true
+
+[schedule]
+open = 2026-05-01T00:00:00Z
+close = 2026-06-01T00:00:00Z
+`))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if !m.Board.IsRankAll() {
+		t.Fatal("IsRankAll() = false, want true (explicitly set to true)")
+	}
+}

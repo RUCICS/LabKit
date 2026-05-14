@@ -63,8 +63,15 @@ const (
 
 // BoardSection configures ranking behavior.
 type BoardSection struct {
-	RankBy string `toml:"rank_by"`
-	Pick   bool   `toml:"pick"`
+	RankBy  string `toml:"rank_by"`
+	Pick    bool   `toml:"pick"`
+	RankAll *bool  `toml:"rank_all"`
+}
+
+// IsRankAll reports whether all users should receive a rank number.
+// When not explicitly set and pick is enabled, defaults to true.
+func (b BoardSection) IsRankAll() bool {
+	return b.RankAll == nil || *b.RankAll
 }
 
 // ScheduleSection configures the time window.
@@ -128,6 +135,10 @@ func (m *Manifest) normalize() {
 	}
 	if m.Board.RankBy == "" && len(m.Metrics) > 0 {
 		m.Board.RankBy = m.Metrics[0].ID
+	}
+	if m.Board.Pick && m.Board.RankAll == nil {
+		t := true
+		m.Board.RankAll = &t
 	}
 	if m.Schedule.Visible.IsZero() {
 		m.Schedule.Visible = m.Schedule.Open
