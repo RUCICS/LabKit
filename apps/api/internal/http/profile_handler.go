@@ -54,7 +54,7 @@ func (h *ProfileHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, http.StatusBadRequest, "invalid_request", "invalid request body")
 		return
 	}
-	user, ok := authenticateBrowserSessionOrPersonalRequest(w, r, h.Service, body)
+	user, ok := authenticateWritableRequest(w, r, h.Service, body)
 	if !ok {
 		return
 	}
@@ -81,7 +81,7 @@ func (h *ProfileHandler) UpdateNickname(w http.ResponseWriter, r *http.Request) 
 		middleware.WriteError(w, r, http.StatusBadRequest, "invalid_request", "invalid request body")
 		return
 	}
-	user, ok := authenticateBrowserSessionOrPersonalRequest(w, r, h.Service, body)
+	user, ok := authenticateWritableRequest(w, r, h.Service, body)
 	if !ok {
 		return
 	}
@@ -109,7 +109,7 @@ func (h *ProfileHandler) UpdateTrack(w http.ResponseWriter, r *http.Request) {
 		middleware.WriteError(w, r, http.StatusBadRequest, "invalid_request", "invalid request body")
 		return
 	}
-	user, ok := authenticateBrowserSessionOrPersonalRequest(w, r, h.Service, body)
+	user, ok := authenticateWritableRequest(w, r, h.Service, body)
 	if !ok {
 		return
 	}

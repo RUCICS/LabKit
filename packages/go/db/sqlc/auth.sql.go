@@ -483,3 +483,22 @@ func (q *Queries) UpdateUserNickname(ctx context.Context, arg UpdateUserNickname
 	)
 	return i, err
 }
+
+const upsertUser = `-- name: UpsertUser :one
+INSERT INTO users (student_id)
+VALUES ($1)
+ON CONFLICT (student_id) DO UPDATE SET student_id = EXCLUDED.student_id
+RETURNING id, student_id
+`
+
+type UpsertUserRow struct {
+	ID        int64  `json:"id"`
+	StudentID string `json:"student_id"`
+}
+
+func (q *Queries) UpsertUser(ctx context.Context, studentID string) (UpsertUserRow, error) {
+	row := q.db.QueryRow(ctx, upsertUser, studentID)
+	var i UpsertUserRow
+	err := row.Scan(&i.ID, &i.StudentID)
+	return i, err
+}

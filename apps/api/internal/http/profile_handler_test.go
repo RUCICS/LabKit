@@ -454,6 +454,32 @@ func TestBrowserSessionAuthorizesMutatingPersonalRequests(t *testing.T) {
 	}
 }
 
+func TestWebLoginSessionCannotMutateProfile(t *testing.T) {
+	repo := newPersonalTestRepo(t, true)
+	svc := personal.NewService(repo)
+	handler := &ProfileHandler{Service: svc}
+
+	// A read-only web-login session (Source=="web") must be rejected on writes.
+	sessionToken, err := issueWebBrowserSession(7, "2026001")
+	if err != nil {
+		t.Fatalf("issueWebBrowserSession() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPut, "/api/labs/sorting/nickname", bytes.NewBufferString(`{"nickname":"Cat"}`))
+	req.SetPathValue("labID", "sorting")
+	req.AddCookie(&http.Cookie{Name: browserSessionCookieName, Value: sessionToken})
+	rr := httptest.NewRecorder()
+
+	handler.UpdateNickname(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusForbidden, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "read_only_session") {
+		t.Fatalf("body = %s, want read_only_session", rr.Body.String())
+	}
+}
+
 func wantStringField(t *testing.T, payload map[string]any, key, want string) {
 	t.Helper()
 	got, ok := payload[key].(string)

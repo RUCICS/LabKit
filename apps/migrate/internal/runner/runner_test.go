@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -38,7 +39,7 @@ func TestUpAppliesAllMigrationsOnCleanDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Version() error = %v", err)
 	}
-	if got, want := version, uint(10); got != want {
+	if got, want := version, uint(11); got != want {
 		t.Fatalf("version = %d, want %d", got, want)
 	}
 	if dirty {
@@ -47,6 +48,7 @@ func TestUpAppliesAllMigrationsOnCleanDatabase(t *testing.T) {
 	assertTableExists(t, ctx, env.pool, "labs")
 	assertTableExists(t, ctx, env.pool, "evaluation_jobs")
 	assertTableExists(t, ctx, env.pool, "web_session_tickets")
+	assertTableExists(t, ctx, env.pool, "final_grades")
 }
 
 func TestUpRejectsLegacyDatabaseWithoutVersionTable(t *testing.T) {
@@ -54,7 +56,7 @@ func TestUpRejectsLegacyDatabaseWithoutVersionTable(t *testing.T) {
 
 	ctx := context.Background()
 	env := openTestEnv(t)
-	applyLegacyMigrations(t, ctx, env.pool)
+	applyLegacyMigrations(t, ctx, env.pool, 0)
 
 	r := New(Config{
 		DatabaseURL:   env.databaseURL,
@@ -76,7 +78,9 @@ func TestBaselineMarksLegacyDatabaseWithoutReplayingMigrations(t *testing.T) {
 
 	ctx := context.Background()
 	env := openTestEnv(t)
-	applyLegacyMigrations(t, ctx, env.pool)
+	// Legacy DB stuck at the schema of migration 7 (no version table). Baseline
+	// at 7, then Up() must apply 8+ — i.e. the normal forward sequence.
+	applyLegacyMigrations(t, ctx, env.pool, 7)
 
 	r := New(Config{
 		DatabaseURL:   env.databaseURL,
@@ -148,7 +152,7 @@ func TestVersionDoesNotCreateVersionTableOnLegacyDatabase(t *testing.T) {
 
 	ctx := context.Background()
 	env := openTestEnv(t)
-	applyLegacyMigrations(t, ctx, env.pool)
+	applyLegacyMigrations(t, ctx, env.pool, 0)
 
 	r := New(Config{
 		DatabaseURL:   env.databaseURL,
@@ -220,7 +224,12 @@ func openTestEnv(t *testing.T) testEnv {
 	}
 }
 
-func applyLegacyMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
+// applyLegacyMigrations simulates a database created before version tracking by
+// applying up migrations directly. throughVersion bounds how far to apply (the
+// schema a legacy DB is "stuck" at); pass 0 to apply every migration. Applying
+// only up to the baseline version keeps a subsequent Baseline()+Up() equivalent
+// to the normal forward sequence, instead of replaying non-idempotent DDL.
+func applyLegacyMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool, throughVersion int) {
 	t.Helper()
 
 	if _, err := pool.Exec(ctx, `
@@ -237,6 +246,9 @@ func applyLegacyMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 		t.Fatalf("Glob() error = %v", err)
 	}
 	for _, path := range paths {
+		if throughVersion > 0 && migrationVersion(t, path) > throughVersion {
+			continue
+		}
 		body, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("ReadFile(%q) error = %v", path, err)
@@ -245,6 +257,25 @@ func applyLegacyMigrations(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 			t.Fatalf("apply legacy migration %q error = %v", path, err)
 		}
 	}
+}
+
+// migrationVersion extracts the numeric prefix of a migration filename, e.g.
+// "0008_user_profile_nickname.up.sql" -> 8.
+func migrationVersion(t *testing.T, path string) int {
+	t.Helper()
+	base := filepath.Base(path)
+	digits := 0
+	for digits < len(base) && base[digits] >= '0' && base[digits] <= '9' {
+		digits++
+	}
+	if digits == 0 {
+		t.Fatalf("migration %q has no numeric version prefix", base)
+	}
+	version, err := strconv.Atoi(base[:digits])
+	if err != nil {
+		t.Fatalf("parse migration version from %q: %v", base, err)
+	}
+	return version
 }
 
 func migrationsDir(t *testing.T) string {

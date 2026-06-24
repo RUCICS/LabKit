@@ -41,6 +41,7 @@ type Repository interface {
 	GetPendingDeviceAuthRequestByOAuthState(context.Context, string) (sqlc.DeviceAuthRequests, error)
 	CompleteDeviceAuthRequest(context.Context, sqlc.CompleteDeviceAuthRequestParams) (sqlc.CompleteDeviceAuthRequestRow, error)
 	GetUserKeyByPublicKey(context.Context, string) (sqlc.UserKeys, error)
+	UpsertUser(context.Context, string) (sqlc.UpsertUserRow, error)
 }
 
 type Service struct {

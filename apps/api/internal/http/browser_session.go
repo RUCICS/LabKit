@@ -11,6 +11,11 @@ import (
 const (
 	browserSessionCookieName = "labkit_browser_session"
 	browserSessionTTL        = 8 * time.Hour
+
+	// browserSessionSource* records how a browser session was minted, for
+	// auditing and for any future "web sessions are read-only" enforcement.
+	browserSessionSourceDevice = "device"
+	browserSessionSourceWeb    = "web"
 )
 
 var browserSessions sync.Map
@@ -19,10 +24,22 @@ type browserSession struct {
 	UserID    int64
 	KeyID     int64
 	StudentID string
+	Source    string
 	ExpiresAt time.Time
 }
 
+// issueBrowserSession mints a session for the CLI device flow (key-bound).
 func issueBrowserSession(userID, keyID int64, studentID string) (string, error) {
+	return issueBrowserSessionWithSource(userID, keyID, studentID, browserSessionSourceDevice)
+}
+
+// issueWebBrowserSession mints a session for the 微人大 web login. It is not
+// bound to a device key (KeyID == 0); read handlers rely on UserID/StudentID.
+func issueWebBrowserSession(userID int64, studentID string) (string, error) {
+	return issueBrowserSessionWithSource(userID, 0, studentID, browserSessionSourceWeb)
+}
+
+func issueBrowserSessionWithSource(userID, keyID int64, studentID, source string) (string, error) {
 	token, err := randomBrowserSessionToken()
 	if err != nil {
 		return "", err
@@ -31,6 +48,7 @@ func issueBrowserSession(userID, keyID int64, studentID string) (string, error) 
 		UserID:    userID,
 		KeyID:     keyID,
 		StudentID: studentID,
+		Source:    source,
 		ExpiresAt: time.Now().UTC().Add(browserSessionTTL),
 	})
 	return token, nil

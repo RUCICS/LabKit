@@ -53,4 +53,34 @@ describe('router', () => {
     expect(router.currentRoute.value.name).toBe('profile');
     expect(router.currentRoute.value.path).toBe('/profile');
   });
+
+  it('routes /login to the login screen', async () => {
+    const router = createAppRouter(createMemoryHistory());
+
+    await router.push('/login?next=/grade');
+    await router.isReady();
+
+    expect(router.currentRoute.value.name).toBe('login');
+    expect(router.currentRoute.value.query.next).toBe('/grade');
+  });
+
+  it('routes /grade to the grade screen', async () => {
+    const router = createAppRouter(createMemoryHistory());
+
+    await router.push('/grade');
+    await router.isReady();
+
+    expect(router.currentRoute.value.name).toBe('grade');
+    expect(router.currentRoute.value.path).toBe('/grade');
+  });
+
+  it('routes lab-scoped grade URLs to the grade screen', async () => {
+    const router = createAppRouter(createMemoryHistory());
+
+    await router.push('/labs/colab-2026-p2/grade');
+    await router.isReady();
+
+    expect(router.currentRoute.value.name).toBe('lab-grade');
+    expect(router.currentRoute.value.params.labID).toBe('colab-2026-p2');
+  });
 });
