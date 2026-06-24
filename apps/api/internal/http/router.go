@@ -227,6 +227,7 @@ func registerV1APIRoutes(
 	mux.Handle("PUT "+apiPrefix+"/admin/labs/{labID}", adminGuard(http.HandlerFunc(labsHandler.UpdateLab)))
 	mux.Handle("GET "+apiPrefix+"/admin/labs/{labID}", adminGuard(http.HandlerFunc(adminHandler.GetLabDetail)))
 	mux.Handle("GET "+apiPrefix+"/admin/labs/{labID}/grades", adminGuard(http.HandlerFunc(adminHandler.ExportGrades)))
+	mux.Handle("GET "+apiPrefix+"/admin/labs/{labID}/grades/status", adminGuard(http.HandlerFunc(gradeHandler.GradeStatus)))
 	mux.Handle("DELETE "+apiPrefix+"/admin/labs/{labID}/grades", adminGuard(http.HandlerFunc(gradeHandler.DeleteGrades)))
 	mux.Handle("POST "+apiPrefix+"/admin/labs/{labID}/grades/import", adminGuard(http.HandlerFunc(gradeHandler.ImportGrades)))
 	mux.Handle("POST "+apiPrefix+"/admin/labs/{labID}/grades/publish", adminGuard(http.HandlerFunc(gradeHandler.PublishGrades)))

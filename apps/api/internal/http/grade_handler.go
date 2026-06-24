@@ -18,6 +18,7 @@ type GradeService interface {
 	ImportGrades(context.Context, string, io.Reader) (gradesvc.ImportGradesResult, error)
 	PublishGrades(context.Context, string) (gradesvc.PublishGradesResult, error)
 	DeleteGrades(context.Context, string) (gradesvc.DeleteGradesResult, error)
+	GradeStatus(context.Context, string) (gradesvc.GradeStatusResult, error)
 }
 
 // GradeHandler serves the student-facing grade view and the admin grade import.
@@ -83,6 +84,25 @@ func (h *GradeHandler) PublishGrades(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.Service.PublishGrades(r.Context(), r.PathValue("labID"))
+	if err != nil {
+		if errors.Is(err, gradesvc.ErrInvalidLab) {
+			middleware.WriteError(w, r, http.StatusBadRequest, "invalid_request", "lab id is required")
+			return
+		}
+		middleware.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", http.StatusText(http.StatusInternalServerError))
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// GradeStatus handles GET /api/admin/labs/{labID}/grades/status, returning the
+// current import/publish counts for the admin UI.
+func (h *GradeHandler) GradeStatus(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.Service == nil {
+		middleware.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", http.StatusText(http.StatusInternalServerError))
+		return
+	}
+	result, err := h.Service.GradeStatus(r.Context(), r.PathValue("labID"))
 	if err != nil {
 		if errors.Is(err, gradesvc.ErrInvalidLab) {
 			middleware.WriteError(w, r, http.StatusBadRequest, "invalid_request", "lab id is required")

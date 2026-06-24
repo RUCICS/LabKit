@@ -78,6 +78,20 @@ func (r *fakeGradeRepo) DeleteFinalGradesByLab(_ context.Context, labID string) 
 	return n, nil
 }
 
+func (r *fakeGradeRepo) SummarizeFinalGrades(_ context.Context, labID string) (sqlc.SummarizeFinalGradesRow, error) {
+	var out sqlc.SummarizeFinalGradesRow
+	for _, row := range r.rows {
+		if row.LabID != labID {
+			continue
+		}
+		out.Total++
+		if row.PublishedAt.Valid {
+			out.Published++
+		}
+	}
+	return out, nil
+}
+
 func TestImportGradesParsesByHeaderName(t *testing.T) {
 	repo := newFakeGradeRepo()
 	svc := NewService(repo)
@@ -229,5 +243,32 @@ func TestDeleteGradesRejectsBlankLab(t *testing.T) {
 	svc := NewService(newFakeGradeRepo())
 	if _, err := svc.DeleteGrades(context.Background(), "  "); !errors.Is(err, ErrInvalidLab) {
 		t.Fatalf("DeleteGrades() error = %v, want ErrInvalidLab", err)
+	}
+}
+
+func TestGradeStatusCountsTotalAndPublished(t *testing.T) {
+	repo := newFakeGradeRepo()
+	svc := NewService(repo)
+	if _, err := svc.ImportGrades(context.Background(), "lab", strings.NewReader("student_id,total\n2026001,80\n2026002,90\n2026003,70\n")); err != nil {
+		t.Fatalf("ImportGrades() error = %v", err)
+	}
+
+	status, err := svc.GradeStatus(context.Background(), "lab")
+	if err != nil {
+		t.Fatalf("GradeStatus() error = %v", err)
+	}
+	if status.Total != 3 || status.Published != 0 || status.Unpublished != 3 {
+		t.Fatalf("status = %+v, want total 3 / published 0 / unpublished 3", status)
+	}
+
+	if _, err := svc.PublishGrades(context.Background(), "lab"); err != nil {
+		t.Fatalf("PublishGrades() error = %v", err)
+	}
+	status, err = svc.GradeStatus(context.Background(), "lab")
+	if err != nil {
+		t.Fatalf("GradeStatus() error = %v", err)
+	}
+	if status.Total != 3 || status.Published != 3 || status.Unpublished != 0 {
+		t.Fatalf("status = %+v, want total 3 / published 3 / unpublished 0", status)
 	}
 }

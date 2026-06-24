@@ -74,6 +74,28 @@ func (q *Queries) PublishFinalGrades(ctx context.Context, labID string) (int64, 
 	return result.RowsAffected(), nil
 }
 
+const summarizeFinalGrades = `-- name: SummarizeFinalGrades :one
+SELECT
+    COUNT(*)                   AS total,
+    COUNT(published_at)        AS published,
+    MAX(updated_at)::timestamptz AS last_updated
+FROM final_grades
+WHERE lab_id = $1
+`
+
+type SummarizeFinalGradesRow struct {
+	Total       int64              `json:"total"`
+	Published   int64              `json:"published"`
+	LastUpdated pgtype.Timestamptz `json:"last_updated"`
+}
+
+func (q *Queries) SummarizeFinalGrades(ctx context.Context, labID string) (SummarizeFinalGradesRow, error) {
+	row := q.db.QueryRow(ctx, summarizeFinalGrades, labID)
+	var i SummarizeFinalGradesRow
+	err := row.Scan(&i.Total, &i.Published, &i.LastUpdated)
+	return i, err
+}
+
 const upsertFinalGrade = `-- name: UpsertFinalGrade :one
 INSERT INTO final_grades (
     lab_id, student_id, total, track, ratio, perf_score, percentile, board_score, remark, updated_at

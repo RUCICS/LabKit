@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router';
 import AdminShell from '../components/admin/AdminShell.vue';
 import LabEditDrawer from '../components/admin/LabEditDrawer.vue';
 import LabActionsMenu from '../components/admin/LabActionsMenu.vue';
+import GradesDrawer from '../components/admin/GradesDrawer.vue';
 import QuotaActionDialog from '../components/admin/QuotaActionDialog.vue';
 import StatusBadge from '../components/chrome/StatusBadge.vue';
 import { authorizedAdminHeaders, readAPIError } from '../lib/admin';
@@ -19,6 +20,8 @@ const drawerLabId = ref<string | null>(null);
 const drawerOpen = ref(false);
 const dialogLab = ref<PublicLab | null>(null);
 const dialogAction = ref<QuotaAction | null>(null);
+const gradesLab = ref<PublicLab | null>(null);
+const gradesOpen = ref(false);
 const flash = ref<string | null>(null);
 
 async function loadLabs() {
@@ -57,6 +60,15 @@ function labPhase(lab: PublicLab) {
 function onPickAction(lab: PublicLab, action: QuotaAction) {
   dialogLab.value = lab;
   dialogAction.value = action;
+}
+
+function openGrades(lab: PublicLab) {
+  gradesLab.value = lab;
+  gradesOpen.value = true;
+}
+
+function onGradesClose() {
+  gradesOpen.value = false;
 }
 
 function onDialogClose() {
@@ -100,6 +112,7 @@ onMounted(() => void loadLabs());
 
           <div class="admin-labs__row-actions">
             <button type="button" class="button button--secondary" @click="openEdit(lab.id)">Edit</button>
+            <button type="button" class="button button--secondary" @click="openGrades(lab)">Grades</button>
             <RouterLink
               class="button button--secondary"
               :to="{ name: 'admin-queue', params: { labID: lab.id } }"
@@ -125,6 +138,13 @@ onMounted(() => void loadLabs());
       :action="dialogAction"
       @close="onDialogClose"
       @done="onDialogDone"
+    />
+
+    <GradesDrawer
+      :lab-id="gradesLab?.id ?? null"
+      :lab-name="gradesLab?.name ?? ''"
+      :open="gradesOpen"
+      @close="onGradesClose"
     />
   </AdminShell>
 </template>

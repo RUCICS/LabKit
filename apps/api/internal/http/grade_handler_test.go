@@ -19,6 +19,7 @@ type fakeGradeService struct {
 	importErr     error
 	publishRes    gradesvc.PublishGradesResult
 	deleteRes     gradesvc.DeleteGradesResult
+	statusRes     gradesvc.GradeStatusResult
 	lastLabID     string
 	lastStudentID string
 	lastImportCSV string
@@ -51,6 +52,11 @@ func (f *fakeGradeService) PublishGrades(_ context.Context, labID string) (grade
 func (f *fakeGradeService) DeleteGrades(_ context.Context, labID string) (gradesvc.DeleteGradesResult, error) {
 	f.lastLabID = labID
 	return f.deleteRes, nil
+}
+
+func (f *fakeGradeService) GradeStatus(_ context.Context, labID string) (gradesvc.GradeStatusResult, error) {
+	f.lastLabID = labID
+	return f.statusRes, nil
 }
 
 func TestGradeRouteReturnsGradeForBrowserSession(t *testing.T) {
@@ -148,6 +154,39 @@ func TestAdminGradeImportRequiresAdminToken(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/admin/labs/colab-2026-p2/grades/import", strings.NewReader("student_id,total\n"))
 	req.Header.Set("Content-Type", "text/csv")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusUnauthorized, rr.Body.String())
+	}
+}
+
+func TestAdminGradeStatusRoute(t *testing.T) {
+	svc := &fakeGradeService{statusRes: gradesvc.GradeStatusResult{LabID: "colab-2026-p2", Total: 30, Published: 12, Unpublished: 18}}
+	router := NewRouter(WithGradeService(svc), WithAdminToken("secret"))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/labs/colab-2026-p2/grades/status", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	var payload gradesvc.GradeStatusResult
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if payload.Total != 30 || payload.Published != 12 || payload.Unpublished != 18 {
+		t.Fatalf("payload = %+v, want total 30 / published 12 / unpublished 18", payload)
+	}
+}
+
+func TestAdminGradeStatusRequiresAdminToken(t *testing.T) {
+	router := NewRouter(WithGradeService(&fakeGradeService{}), WithAdminToken("secret"))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/admin/labs/colab-2026-p2/grades/status", nil)
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 

@@ -69,6 +69,15 @@ type DeleteGradesResult struct {
 	Deleted int64  `json:"deleted"`
 }
 
+// GradeStatusResult summarizes the stored grades for a lab, for the admin UI.
+type GradeStatusResult struct {
+	LabID         string     `json:"lab_id"`
+	Total         int64      `json:"total"`
+	Published     int64      `json:"published"`
+	Unpublished   int64      `json:"unpublished"`
+	LastUpdatedAt *time.Time `json:"last_updated_at,omitempty"`
+}
+
 // GetGrade returns the published grade for a (lab, student), or ErrGradeNotFound.
 func (s *Service) GetGrade(ctx context.Context, labID, studentID string) (Grade, error) {
 	if s == nil || s.repo == nil {
@@ -179,6 +188,32 @@ func (s *Service) DeleteGrades(ctx context.Context, labID string) (DeleteGradesR
 		return DeleteGradesResult{}, err
 	}
 	return DeleteGradesResult{LabID: labID, Deleted: n}, nil
+}
+
+// GradeStatus returns counts of stored/published grades for a lab.
+func (s *Service) GradeStatus(ctx context.Context, labID string) (GradeStatusResult, error) {
+	if s == nil || s.repo == nil {
+		return GradeStatusResult{}, fmt.Errorf("grade service unavailable")
+	}
+	labID = strings.TrimSpace(labID)
+	if labID == "" {
+		return GradeStatusResult{}, ErrInvalidLab
+	}
+	row, err := s.repo.SummarizeFinalGrades(ctx, labID)
+	if err != nil {
+		return GradeStatusResult{}, err
+	}
+	result := GradeStatusResult{
+		LabID:       labID,
+		Total:       row.Total,
+		Published:   row.Published,
+		Unpublished: row.Total - row.Published,
+	}
+	if row.LastUpdated.Valid {
+		updated := row.LastUpdated.Time.UTC()
+		result.LastUpdatedAt = &updated
+	}
+	return result, nil
 }
 
 func headerIndex(header []string) map[string]int {

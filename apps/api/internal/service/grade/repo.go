@@ -15,6 +15,7 @@ type Repository interface {
 	GetFinalGrade(context.Context, sqlc.GetFinalGradeParams) (sqlc.FinalGrades, error)
 	PublishFinalGrades(context.Context, string) (int64, error)
 	DeleteFinalGradesByLab(context.Context, string) (int64, error)
+	SummarizeFinalGrades(context.Context, string) (sqlc.SummarizeFinalGradesRow, error)
 }
 
 type repo struct {
@@ -40,4 +41,8 @@ func (r *repo) PublishFinalGrades(ctx context.Context, labID string) (int64, err
 
 func (r *repo) DeleteFinalGradesByLab(ctx context.Context, labID string) (int64, error) {
 	return r.store.DeleteFinalGradesByLab(ctx, labID)
+}
+
+func (r *repo) SummarizeFinalGrades(ctx context.Context, labID string) (sqlc.SummarizeFinalGradesRow, error) {
+	return r.store.SummarizeFinalGrades(ctx, labID)
 }

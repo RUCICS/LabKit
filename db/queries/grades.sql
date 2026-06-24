@@ -33,3 +33,11 @@ WHERE lab_id = $1
 -- name: DeleteFinalGradesByLab :execrows
 DELETE FROM final_grades
 WHERE lab_id = $1;
+
+-- name: SummarizeFinalGrades :one
+SELECT
+    COUNT(*)                   AS total,
+    COUNT(published_at)        AS published,
+    MAX(updated_at)::timestamptz AS last_updated
+FROM final_grades
+WHERE lab_id = $1;
