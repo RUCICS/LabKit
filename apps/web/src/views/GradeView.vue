@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { DEFAULT_GRADE_LAB_ID, getMyGrade, type FinalGrade } from '../lib/grade';
+import { getMyGrade, type FinalGrade } from '../lib/grade';
 import { login } from '../lib/session';
 import PageTitleBlock from '../components/chrome/PageTitleBlock.vue';
 import SectionHeader from '../components/chrome/SectionHeader.vue';
+import GradeDetail from '../components/grade/GradeDetail.vue';
 
 const props = defineProps<{ labId?: string }>();
 const route = useRoute();
@@ -14,14 +15,7 @@ const labId = computed(() => {
     return props.labId.trim();
   }
   const param = route.params.labID;
-  if (typeof param === 'string' && param.trim()) {
-    return param.trim();
-  }
-  const query = route.query.lab;
-  if (typeof query === 'string' && query.trim()) {
-    return query.trim();
-  }
-  return DEFAULT_GRADE_LAB_ID;
+  return typeof param === 'string' ? param.trim() : '';
 });
 
 type ViewState = 'loading' | 'ok' | 'unpublished' | 'unauthorized' | 'error';
@@ -29,17 +23,12 @@ const state = ref<ViewState>('loading');
 const grade = ref<FinalGrade | null>(null);
 const errorMessage = ref('');
 
-const breakdown = computed(() => grade.value?.items ?? []);
-const hasTotal = computed(() => Boolean(grade.value?.total && grade.value.total.trim()));
-
-function formatUpdatedAt(value: string | undefined) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
-}
-
 async function load() {
+  if (!labId.value) {
+    errorMessage.value = '缺少 Lab 标识。';
+    state.value = 'error';
+    return;
+  }
   state.value = 'loading';
   errorMessage.value = '';
   const result = await getMyGrade(labId.value);
@@ -107,35 +96,7 @@ watch(labId, () => {
       <button class="grade-view__button" type="button" @click="load">重试</button>
     </section>
 
-    <template v-else-if="state === 'ok' && grade">
-      <section v-if="hasTotal" class="grade-view__panel grade-view__total">
-        <SectionHeader title="成绩" subtitle="Total" />
-        <p class="grade-view__total-value" data-testid="grade-total">{{ grade.total }}</p>
-      </section>
-
-      <section v-if="breakdown.length" class="grade-view__panel">
-        <SectionHeader title="分项" subtitle="Breakdown" />
-        <dl class="grade-view__grid">
-          <div v-for="(item, i) in breakdown" :key="`${item.label}-${i}`" class="grade-view__cell">
-            <dt>{{ item.label }}</dt>
-            <dd>{{ item.value }}</dd>
-          </div>
-        </dl>
-      </section>
-
-      <section v-if="!hasTotal && !breakdown.length" class="grade-view__panel">
-        <p class="grade-view__status">暂无成绩明细。</p>
-      </section>
-
-      <section v-if="grade.remark && grade.remark.trim()" class="grade-view__panel">
-        <SectionHeader title="备注" subtitle="Remark" />
-        <p class="grade-view__remark">{{ grade.remark }}</p>
-      </section>
-
-      <p v-if="grade.updated_at" class="grade-view__meta">
-        更新于 {{ formatUpdatedAt(grade.updated_at) }}
-      </p>
-    </template>
+    <GradeDetail v-else-if="state === 'ok' && grade" :grade="grade" />
   </main>
 </template>
 
@@ -179,71 +140,5 @@ watch(labId, () => {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
-}
-
-.grade-view__total {
-  text-align: center;
-}
-
-.grade-view__total-value {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: 3rem;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: var(--text-primary);
-}
-
-.grade-view__formula {
-  margin: 0;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
-}
-
-.grade-view__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px;
-  margin: 0;
-}
-
-.grade-view__cell {
-  display: grid;
-  gap: 6px;
-  padding: 14px;
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
-  background: var(--bg-elevated);
-}
-
-.grade-view__cell dt {
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.grade-view__cell dd {
-  margin: 0;
-  font-family: var(--font-mono);
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.grade-view__remark {
-  margin: 0;
-  color: var(--text-secondary);
-  line-height: 1.6;
-  white-space: pre-wrap;
-}
-
-.grade-view__meta {
-  margin: 0;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 0.74rem;
 }
 </style>

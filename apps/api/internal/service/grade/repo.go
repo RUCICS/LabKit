@@ -13,6 +13,7 @@ import (
 type Repository interface {
 	UpsertFinalGrade(context.Context, sqlc.UpsertFinalGradeParams) (sqlc.FinalGrades, error)
 	GetFinalGrade(context.Context, sqlc.GetFinalGradeParams) (sqlc.FinalGrades, error)
+	ListPublishedFinalGradesByStudent(context.Context, string) ([]sqlc.FinalGrades, error)
 	PublishFinalGrades(context.Context, string) (int64, error)
 	DeleteFinalGradesByLab(context.Context, string) (int64, error)
 	SummarizeFinalGrades(context.Context, string) (sqlc.SummarizeFinalGradesRow, error)
@@ -33,6 +34,10 @@ func (r *repo) UpsertFinalGrade(ctx context.Context, arg sqlc.UpsertFinalGradePa
 
 func (r *repo) GetFinalGrade(ctx context.Context, arg sqlc.GetFinalGradeParams) (sqlc.FinalGrades, error) {
 	return r.store.GetFinalGrade(ctx, arg)
+}
+
+func (r *repo) ListPublishedFinalGradesByStudent(ctx context.Context, studentID string) ([]sqlc.FinalGrades, error) {
+	return r.store.ListPublishedFinalGradesByStudent(ctx, studentID)
 }
 
 func (r *repo) PublishFinalGrades(ctx context.Context, labID string) (int64, error) {

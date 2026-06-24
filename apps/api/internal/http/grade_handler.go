@@ -15,6 +15,7 @@ import (
 // admin import/publish).
 type GradeService interface {
 	GetGrade(context.Context, string, string) (gradesvc.Grade, error)
+	ListGrades(context.Context, string) ([]gradesvc.Grade, error)
 	ImportGrades(context.Context, string, io.Reader) (gradesvc.ImportGradesResult, error)
 	PublishGrades(context.Context, string) (gradesvc.PublishGradesResult, error)
 	DeleteGrades(context.Context, string) (gradesvc.DeleteGradesResult, error)
@@ -53,6 +54,25 @@ func (h *GradeHandler) GetMyGrade(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, grade)
+}
+
+// ListMyGrades handles GET /api/grades, returning every published grade for the
+// requesting student across labs (no lab is assumed).
+func (h *GradeHandler) ListMyGrades(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.Service == nil {
+		middleware.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", http.StatusText(http.StatusInternalServerError))
+		return
+	}
+	studentID, ok := h.resolveStudentID(w, r)
+	if !ok {
+		return
+	}
+	grades, err := h.Service.ListGrades(r.Context(), studentID)
+	if err != nil {
+		middleware.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", http.StatusText(http.StatusInternalServerError))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"grades": grades})
 }
 
 // ImportGrades handles POST /api/admin/labs/{labID}/grades/import. The CSV may

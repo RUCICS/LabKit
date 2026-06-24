@@ -20,6 +20,7 @@ type fakeGradeService struct {
 	publishRes    gradesvc.PublishGradesResult
 	deleteRes     gradesvc.DeleteGradesResult
 	statusRes     gradesvc.GradeStatusResult
+	listRes       []gradesvc.Grade
 	lastLabID     string
 	lastStudentID string
 	lastImportCSV string
@@ -59,6 +60,11 @@ func (f *fakeGradeService) GradeStatus(_ context.Context, labID string) (gradesv
 	return f.statusRes, nil
 }
 
+func (f *fakeGradeService) ListGrades(_ context.Context, studentID string) ([]gradesvc.Grade, error) {
+	f.lastStudentID = studentID
+	return f.listRes, nil
+}
+
 func TestGradeRouteReturnsGradeForBrowserSession(t *testing.T) {
 	svc := &fakeGradeService{grade: gradesvc.Grade{
 		LabID:     "colab-2026-p2",
@@ -96,6 +102,46 @@ func TestGradeRouteReturnsGradeForBrowserSession(t *testing.T) {
 	}
 	if len(payload.Items) != 1 || payload.Items[0].Label != "赛道" {
 		t.Fatalf("items = %+v, want [赛道]", payload.Items)
+	}
+}
+
+func TestMyGradesRouteListsAcrossLabs(t *testing.T) {
+	svc := &fakeGradeService{listRes: []gradesvc.Grade{
+		{LabID: "colab-2026-p2", StudentID: "2026001", Total: "86.5"},
+		{LabID: "sorting", StudentID: "2026001", Total: "90"},
+	}}
+	router := NewRouter(WithGradeService(svc))
+
+	token, _ := issueWebBrowserSession(7, "2026001")
+	req := httptest.NewRequest(http.MethodGet, "/api/grades", nil)
+	req.AddCookie(&http.Cookie{Name: browserSessionCookieName, Value: token})
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	if svc.lastStudentID != "2026001" {
+		t.Fatalf("queried student id = %q, want 2026001", svc.lastStudentID)
+	}
+	var payload struct {
+		Grades []gradesvc.Grade `json:"grades"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(payload.Grades) != 2 {
+		t.Fatalf("grades = %d, want 2", len(payload.Grades))
+	}
+}
+
+func TestMyGradesRouteRequiresAuth(t *testing.T) {
+	router := NewRouter(WithGradeService(&fakeGradeService{}))
+	req := httptest.NewRequest(http.MethodGet, "/api/grades", nil)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rr.Code, http.StatusUnauthorized)
 	}
 }
 

@@ -55,6 +55,43 @@ func (q *Queries) GetFinalGrade(ctx context.Context, arg GetFinalGradeParams) (F
 	return i, err
 }
 
+const listPublishedFinalGradesByStudent = `-- name: ListPublishedFinalGradesByStudent :many
+SELECT lab_id, student_id, total, remark, published_at, updated_at, items
+FROM final_grades
+WHERE student_id = $1
+  AND published_at IS NOT NULL
+  AND published_at <= NOW()
+ORDER BY updated_at DESC
+`
+
+func (q *Queries) ListPublishedFinalGradesByStudent(ctx context.Context, studentID string) ([]FinalGrades, error) {
+	rows, err := q.db.Query(ctx, listPublishedFinalGradesByStudent, studentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []FinalGrades{}
+	for rows.Next() {
+		var i FinalGrades
+		if err := rows.Scan(
+			&i.LabID,
+			&i.StudentID,
+			&i.Total,
+			&i.Remark,
+			&i.PublishedAt,
+			&i.UpdatedAt,
+			&i.Items,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const publishFinalGrades = `-- name: PublishFinalGrades :execrows
 UPDATE final_grades
 SET published_at = NOW(),

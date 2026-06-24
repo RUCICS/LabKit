@@ -110,6 +110,31 @@ func (s *Service) GetGrade(ctx context.Context, labID, studentID string) (Grade,
 	return gradeFromRow(row)
 }
 
+// ListGrades returns every published grade for a student across all labs,
+// newest first. Used by the student "my grades" landing.
+func (s *Service) ListGrades(ctx context.Context, studentID string) ([]Grade, error) {
+	if s == nil || s.repo == nil {
+		return nil, fmt.Errorf("grade service unavailable")
+	}
+	studentID = strings.TrimSpace(studentID)
+	if studentID == "" {
+		return []Grade{}, nil
+	}
+	rows, err := s.repo.ListPublishedFinalGradesByStudent(ctx, studentID)
+	if err != nil {
+		return nil, err
+	}
+	grades := make([]Grade, 0, len(rows))
+	for _, row := range rows {
+		grade, err := gradeFromRow(row)
+		if err != nil {
+			return nil, err
+		}
+		grades = append(grades, grade)
+	}
+	return grades, nil
+}
+
 type columnRole int
 
 const (

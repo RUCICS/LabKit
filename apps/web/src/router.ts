@@ -5,6 +5,7 @@ import AdminQueueView from './views/AdminQueueView.vue';
 import AuthConfirmView from './views/AuthConfirmView.vue';
 import DeviceAuthView from './views/DeviceAuthView.vue';
 import GradeView from './views/GradeView.vue';
+import GradesIndexView from './views/GradesIndexView.vue';
 import HistoryView from './views/HistoryView.vue';
 import LabListView from './views/LabListView.vue';
 import LoginView from './views/LoginView.vue';
@@ -55,7 +56,7 @@ export function createAppRouter(history = createWebHistory()) {
       {
         path: '/grade',
         name: 'grade',
-        component: GradeView
+        component: GradesIndexView
       },
       {
         path: '/labs/:labID/grade',

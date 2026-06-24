@@ -48,6 +48,16 @@ func (r *fakeGradeRepo) GetFinalGrade(_ context.Context, arg sqlc.GetFinalGradeP
 	return row, nil
 }
 
+func (r *fakeGradeRepo) ListPublishedFinalGradesByStudent(_ context.Context, studentID string) ([]sqlc.FinalGrades, error) {
+	var out []sqlc.FinalGrades
+	for _, row := range r.rows {
+		if row.StudentID == studentID && row.PublishedAt.Valid {
+			out = append(out, row)
+		}
+	}
+	return out, nil
+}
+
 func (r *fakeGradeRepo) PublishFinalGrades(_ context.Context, labID string) (int64, error) {
 	var n int64
 	for key, row := range r.rows {
@@ -232,6 +242,35 @@ func TestGetGradeUnpublishedThenPublished(t *testing.T) {
 	}
 	if grade.PublishedAt == nil {
 		t.Fatal("published_at should be set after publish")
+	}
+}
+
+func TestListGradesReturnsOnlyPublishedForStudentAcrossLabs(t *testing.T) {
+	repo := newFakeGradeRepo()
+	svc := NewService(repo)
+	if _, err := svc.ImportGrades(context.Background(), "lab-a", strings.NewReader("student_id,total\n2026001,80\n2026002,70\n")); err != nil {
+		t.Fatalf("import lab-a: %v", err)
+	}
+	if _, err := svc.ImportGrades(context.Background(), "lab-b", strings.NewReader("student_id,total\n2026001,90\n")); err != nil {
+		t.Fatalf("import lab-b: %v", err)
+	}
+
+	// Nothing published yet.
+	if grades, err := svc.ListGrades(context.Background(), "2026001"); err != nil || len(grades) != 0 {
+		t.Fatalf("ListGrades before publish = (%v, %v), want empty", grades, err)
+	}
+
+	if _, err := svc.PublishGrades(context.Background(), "lab-a"); err != nil {
+		t.Fatalf("publish lab-a: %v", err)
+	}
+
+	grades, err := svc.ListGrades(context.Background(), "2026001")
+	if err != nil {
+		t.Fatalf("ListGrades() error = %v", err)
+	}
+	// lab-a published (student 2026001) → 1; lab-b still unpublished → excluded.
+	if len(grades) != 1 || grades[0].LabID != "lab-a" {
+		t.Fatalf("grades = %+v, want only lab-a", grades)
 	}
 }
 

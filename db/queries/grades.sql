@@ -19,6 +19,14 @@ WHERE lab_id = $1
   AND published_at <= NOW()
 LIMIT 1;
 
+-- name: ListPublishedFinalGradesByStudent :many
+SELECT *
+FROM final_grades
+WHERE student_id = $1
+  AND published_at IS NOT NULL
+  AND published_at <= NOW()
+ORDER BY updated_at DESC;
+
 -- name: PublishFinalGrades :execrows
 UPDATE final_grades
 SET published_at = NOW(),

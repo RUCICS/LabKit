@@ -67,7 +67,7 @@ describe('GradeView', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
-    const view = await mountGradeView('/grade');
+    const view = await mountGradeView('/labs/colab-2026-p2/grade');
 
     expect(fetchMock).toHaveBeenCalledWith(
       '/api/labs/colab-2026-p2/grade',
@@ -102,7 +102,7 @@ describe('GradeView', () => {
   it('shows the not-published state on 404', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ error: { message: '成绩尚未发布' } }, 404)));
 
-    const view = await mountGradeView('/grade');
+    const view = await mountGradeView('/labs/colab-2026-p2/grade');
 
     expect(document.body.textContent).toContain('成绩尚未发布');
 
@@ -112,7 +112,7 @@ describe('GradeView', () => {
   it('shows a login prompt on 401', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ error: { message: 'unauthorized' } }, 401)));
 
-    const view = await mountGradeView('/grade');
+    const view = await mountGradeView('/labs/colab-2026-p2/grade');
 
     expect(document.body.textContent).toContain('请先登录');
     expect(document.body.textContent).toContain('登录');

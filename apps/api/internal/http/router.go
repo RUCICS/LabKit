@@ -211,6 +211,7 @@ func registerV1APIRoutes(
 	mux.HandleFunc("GET "+apiPrefix+"/labs", labsHandler.ListLabs)
 	mux.HandleFunc("GET "+apiPrefix+"/labs/{labID}", labsHandler.GetLab)
 	mux.HandleFunc("GET "+apiPrefix+"/labs/{labID}/board", leaderboardHandler.GetBoard)
+	mux.HandleFunc("GET "+apiPrefix+"/grades", gradeHandler.ListMyGrades)
 	mux.HandleFunc("GET "+apiPrefix+"/labs/{labID}/grade", gradeHandler.GetMyGrade)
 	mux.HandleFunc("GET "+apiPrefix+"/labs/{labID}/submit/precheck", submissionsHandler.GetSubmitPrecheck)
 	mux.HandleFunc("POST "+apiPrefix+"/labs/{labID}/submit", submissionsHandler.CreateSubmission)
