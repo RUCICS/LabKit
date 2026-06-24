@@ -62,6 +62,22 @@ func authenticateBrowserSessionOrPersonalRequest(w http.ResponseWriter, r *http.
 	return authenticatePersonalRequest(w, r, auth, body)
 }
 
+// authenticateWritableRequest authenticates a mutating request. Read-only
+// web-login sessions (Source=="web", not bound to a device key) are rejected;
+// device-paired browser sessions and CLI signatures are accepted. This keeps
+// the web login strictly read-only without touching the key-only write paths
+// (submit/keys/board), which never accept a browser session at all.
+func authenticateWritableRequest(w http.ResponseWriter, r *http.Request, auth personalAuthenticator, body []byte) (personal.AuthenticatedUser, bool) {
+	if session, ok := browserSessionFromRequest(r); ok {
+		if session.Source == browserSessionSourceWeb {
+			middleware.WriteError(w, r, http.StatusForbidden, "read_only_session", "Web login sessions are read-only")
+			return personal.AuthenticatedUser{}, false
+		}
+		return personal.AuthenticatedUser{UserID: session.UserID, KeyID: session.KeyID}, true
+	}
+	return authenticatePersonalRequest(w, r, auth, body)
+}
+
 func authenticateBrowserSessionRequest(r *http.Request) (personal.AuthenticatedUser, bool) {
 	session, ok := browserSessionFromRequest(r)
 	if !ok {

@@ -18,6 +18,7 @@ type fakeGradeService struct {
 	importRes     gradesvc.ImportGradesResult
 	importErr     error
 	publishRes    gradesvc.PublishGradesResult
+	deleteRes     gradesvc.DeleteGradesResult
 	lastLabID     string
 	lastStudentID string
 	lastImportCSV string
@@ -45,6 +46,11 @@ func (f *fakeGradeService) ImportGrades(_ context.Context, labID string, r io.Re
 func (f *fakeGradeService) PublishGrades(_ context.Context, labID string) (gradesvc.PublishGradesResult, error) {
 	f.lastLabID = labID
 	return f.publishRes, nil
+}
+
+func (f *fakeGradeService) DeleteGrades(_ context.Context, labID string) (gradesvc.DeleteGradesResult, error) {
+	f.lastLabID = labID
+	return f.deleteRes, nil
 }
 
 func TestGradeRouteReturnsGradeForBrowserSession(t *testing.T) {
@@ -142,6 +148,43 @@ func TestAdminGradeImportRequiresAdminToken(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/api/admin/labs/colab-2026-p2/grades/import", strings.NewReader("student_id,total\n"))
 	req.Header.Set("Content-Type", "text/csv")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusUnauthorized, rr.Body.String())
+	}
+}
+
+func TestAdminGradeDeleteRoute(t *testing.T) {
+	svc := &fakeGradeService{deleteRes: gradesvc.DeleteGradesResult{LabID: "colab-2026-p2", Deleted: 4}}
+	router := NewRouter(WithGradeService(svc), WithAdminToken("secret"))
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/admin/labs/colab-2026-p2/grades", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	if svc.lastLabID != "colab-2026-p2" {
+		t.Fatalf("deleted lab id = %q, want %q", svc.lastLabID, "colab-2026-p2")
+	}
+	var payload gradesvc.DeleteGradesResult
+	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if payload.Deleted != 4 {
+		t.Fatalf("deleted = %d, want 4", payload.Deleted)
+	}
+}
+
+func TestAdminGradeDeleteRequiresAdminToken(t *testing.T) {
+	svc := &fakeGradeService{}
+	router := NewRouter(WithGradeService(svc), WithAdminToken("secret"))
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/admin/labs/colab-2026-p2/grades", nil)
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 

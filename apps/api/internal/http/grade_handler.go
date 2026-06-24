@@ -17,6 +17,7 @@ type GradeService interface {
 	GetGrade(context.Context, string, string) (gradesvc.Grade, error)
 	ImportGrades(context.Context, string, io.Reader) (gradesvc.ImportGradesResult, error)
 	PublishGrades(context.Context, string) (gradesvc.PublishGradesResult, error)
+	DeleteGrades(context.Context, string) (gradesvc.DeleteGradesResult, error)
 }
 
 // GradeHandler serves the student-facing grade view and the admin grade import.
@@ -82,6 +83,25 @@ func (h *GradeHandler) PublishGrades(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.Service.PublishGrades(r.Context(), r.PathValue("labID"))
+	if err != nil {
+		if errors.Is(err, gradesvc.ErrInvalidLab) {
+			middleware.WriteError(w, r, http.StatusBadRequest, "invalid_request", "lab id is required")
+			return
+		}
+		middleware.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", http.StatusText(http.StatusInternalServerError))
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+// DeleteGrades handles DELETE /api/admin/labs/{labID}/grades, clearing all
+// grade rows for a lab so a corrected CSV can be re-imported cleanly.
+func (h *GradeHandler) DeleteGrades(w http.ResponseWriter, r *http.Request) {
+	if h == nil || h.Service == nil {
+		middleware.WriteError(w, r, http.StatusInternalServerError, "internal_server_error", http.StatusText(http.StatusInternalServerError))
+		return
+	}
+	result, err := h.Service.DeleteGrades(r.Context(), r.PathValue("labID"))
 	if err != nil {
 		if errors.Is(err, gradesvc.ErrInvalidLab) {
 			middleware.WriteError(w, r, http.StatusBadRequest, "invalid_request", "lab id is required")

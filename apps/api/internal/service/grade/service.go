@@ -63,6 +63,12 @@ type PublishGradesResult struct {
 	Published int64  `json:"published"`
 }
 
+// DeleteGradesResult reports how many rows were removed.
+type DeleteGradesResult struct {
+	LabID   string `json:"lab_id"`
+	Deleted int64  `json:"deleted"`
+}
+
 // GetGrade returns the published grade for a (lab, student), or ErrGradeNotFound.
 func (s *Service) GetGrade(ctx context.Context, labID, studentID string) (Grade, error) {
 	if s == nil || s.repo == nil {
@@ -157,6 +163,22 @@ func (s *Service) PublishGrades(ctx context.Context, labID string) (PublishGrade
 		return PublishGradesResult{}, err
 	}
 	return PublishGradesResult{LabID: labID, Published: n}, nil
+}
+
+// DeleteGrades removes every grade row for a lab, supporting a clean re-import.
+func (s *Service) DeleteGrades(ctx context.Context, labID string) (DeleteGradesResult, error) {
+	if s == nil || s.repo == nil {
+		return DeleteGradesResult{}, fmt.Errorf("grade service unavailable")
+	}
+	labID = strings.TrimSpace(labID)
+	if labID == "" {
+		return DeleteGradesResult{}, ErrInvalidLab
+	}
+	n, err := s.repo.DeleteFinalGradesByLab(ctx, labID)
+	if err != nil {
+		return DeleteGradesResult{}, err
+	}
+	return DeleteGradesResult{LabID: labID, Deleted: n}, nil
 }
 
 func headerIndex(header []string) map[string]int {

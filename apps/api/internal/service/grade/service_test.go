@@ -205,3 +205,29 @@ func TestGetGradeMissingStudent(t *testing.T) {
 		t.Fatalf("GetGrade() error = %v, want ErrGradeNotFound", err)
 	}
 }
+
+func TestDeleteGradesClearsLabRows(t *testing.T) {
+	repo := newFakeGradeRepo()
+	svc := NewService(repo)
+	if _, err := svc.ImportGrades(context.Background(), "lab", strings.NewReader("student_id,total\n2026001,80\n2026002,90\n")); err != nil {
+		t.Fatalf("ImportGrades() error = %v", err)
+	}
+
+	result, err := svc.DeleteGrades(context.Background(), "lab")
+	if err != nil {
+		t.Fatalf("DeleteGrades() error = %v", err)
+	}
+	if result.Deleted != 2 {
+		t.Fatalf("deleted = %d, want 2", result.Deleted)
+	}
+	if len(repo.rows) != 0 {
+		t.Fatalf("rows remaining = %d, want 0", len(repo.rows))
+	}
+}
+
+func TestDeleteGradesRejectsBlankLab(t *testing.T) {
+	svc := NewService(newFakeGradeRepo())
+	if _, err := svc.DeleteGrades(context.Background(), "  "); !errors.Is(err, ErrInvalidLab) {
+		t.Fatalf("DeleteGrades() error = %v, want ErrInvalidLab", err)
+	}
+}
