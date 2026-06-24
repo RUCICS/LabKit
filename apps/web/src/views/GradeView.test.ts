@@ -50,17 +50,17 @@ afterEach(() => {
 });
 
 describe('GradeView', () => {
-  it('renders the total and breakdown for a published grade', async () => {
+  it('renders the headline total and free-form breakdown for a published grade', async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({
         lab_id: 'colab-2026-p2',
         student_id: '2026001',
-        total: 86.5,
-        track: 'throughput',
-        ratio: 1.2,
-        perf_score: 85,
-        percentile: 0.91,
-        board_score: 14,
+        total: '86.5',
+        items: [
+          { label: '赛道', value: 'throughput' },
+          { label: '性能分(85%)', value: '85' },
+          { label: '打榜分(15%)', value: '14' }
+        ],
         remark: '复核无误',
         updated_at: '2026-06-20T10:00:00Z'
       })
@@ -73,9 +73,11 @@ describe('GradeView', () => {
       '/api/labs/colab-2026-p2/grade',
       expect.objectContaining({ credentials: 'include' })
     );
-    expect(document.body.textContent).toContain('86.50');
+    expect(document.body.textContent).toContain('86.5');
     expect(document.body.textContent).toContain('throughput');
-    expect(document.body.textContent).toContain('总评 = 0.85 × 性能分 + 0.15 × 打榜分');
+    // Labels come straight from the CSV headers — the platform hardcodes none.
+    expect(document.body.textContent).toContain('性能分(85%)');
+    expect(document.body.textContent).toContain('打榜分(15%)');
     expect(document.body.textContent).toContain('复核无误');
 
     view.unmount();
@@ -83,7 +85,7 @@ describe('GradeView', () => {
 
   it('uses the labID route param when present', async () => {
     const fetchMock = vi.fn(async () =>
-      jsonResponse({ lab_id: 'sorting', student_id: '2026001', total: 90, updated_at: '2026-06-20T10:00:00Z' })
+      jsonResponse({ lab_id: 'sorting', student_id: '2026001', total: '90', items: [], updated_at: '2026-06-20T10:00:00Z' })
     );
     vi.stubGlobal('fetch', fetchMock);
 

@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -25,7 +26,7 @@ func (q *Queries) DeleteFinalGradesByLab(ctx context.Context, labID string) (int
 }
 
 const getFinalGrade = `-- name: GetFinalGrade :one
-SELECT lab_id, student_id, total, track, ratio, perf_score, percentile, board_score, remark, published_at, updated_at
+SELECT lab_id, student_id, total, remark, published_at, updated_at, items
 FROM final_grades
 WHERE lab_id = $1
   AND student_id = $2
@@ -46,14 +47,10 @@ func (q *Queries) GetFinalGrade(ctx context.Context, arg GetFinalGradeParams) (F
 		&i.LabID,
 		&i.StudentID,
 		&i.Total,
-		&i.Track,
-		&i.Ratio,
-		&i.PerfScore,
-		&i.Percentile,
-		&i.BoardScore,
 		&i.Remark,
 		&i.PublishedAt,
 		&i.UpdatedAt,
+		&i.Items,
 	)
 	return i, err
 }
@@ -98,31 +95,23 @@ func (q *Queries) SummarizeFinalGrades(ctx context.Context, labID string) (Summa
 
 const upsertFinalGrade = `-- name: UpsertFinalGrade :one
 INSERT INTO final_grades (
-    lab_id, student_id, total, track, ratio, perf_score, percentile, board_score, remark, updated_at
+    lab_id, student_id, total, remark, items, updated_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+VALUES ($1, $2, $3, $4, $5, NOW())
 ON CONFLICT (lab_id, student_id) DO UPDATE SET
     total = EXCLUDED.total,
-    track = EXCLUDED.track,
-    ratio = EXCLUDED.ratio,
-    perf_score = EXCLUDED.perf_score,
-    percentile = EXCLUDED.percentile,
-    board_score = EXCLUDED.board_score,
     remark = EXCLUDED.remark,
+    items = EXCLUDED.items,
     updated_at = NOW()
-RETURNING lab_id, student_id, total, track, ratio, perf_score, percentile, board_score, remark, published_at, updated_at
+RETURNING lab_id, student_id, total, remark, published_at, updated_at, items
 `
 
 type UpsertFinalGradeParams struct {
-	LabID      string        `json:"lab_id"`
-	StudentID  string        `json:"student_id"`
-	Total      float32       `json:"total"`
-	Track      pgtype.Text   `json:"track"`
-	Ratio      pgtype.Float4 `json:"ratio"`
-	PerfScore  pgtype.Float4 `json:"perf_score"`
-	Percentile pgtype.Float4 `json:"percentile"`
-	BoardScore pgtype.Float4 `json:"board_score"`
-	Remark     pgtype.Text   `json:"remark"`
+	LabID     string          `json:"lab_id"`
+	StudentID string          `json:"student_id"`
+	Total     pgtype.Text     `json:"total"`
+	Remark    pgtype.Text     `json:"remark"`
+	Items     json.RawMessage `json:"items"`
 }
 
 func (q *Queries) UpsertFinalGrade(ctx context.Context, arg UpsertFinalGradeParams) (FinalGrades, error) {
@@ -130,26 +119,18 @@ func (q *Queries) UpsertFinalGrade(ctx context.Context, arg UpsertFinalGradePara
 		arg.LabID,
 		arg.StudentID,
 		arg.Total,
-		arg.Track,
-		arg.Ratio,
-		arg.PerfScore,
-		arg.Percentile,
-		arg.BoardScore,
 		arg.Remark,
+		arg.Items,
 	)
 	var i FinalGrades
 	err := row.Scan(
 		&i.LabID,
 		&i.StudentID,
 		&i.Total,
-		&i.Track,
-		&i.Ratio,
-		&i.PerfScore,
-		&i.Percentile,
-		&i.BoardScore,
 		&i.Remark,
 		&i.PublishedAt,
 		&i.UpdatedAt,
+		&i.Items,
 	)
 	return i, err
 }

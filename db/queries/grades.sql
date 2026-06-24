@@ -1,16 +1,12 @@
 -- name: UpsertFinalGrade :one
 INSERT INTO final_grades (
-    lab_id, student_id, total, track, ratio, perf_score, percentile, board_score, remark, updated_at
+    lab_id, student_id, total, remark, items, updated_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+VALUES ($1, $2, $3, $4, $5, NOW())
 ON CONFLICT (lab_id, student_id) DO UPDATE SET
     total = EXCLUDED.total,
-    track = EXCLUDED.track,
-    ratio = EXCLUDED.ratio,
-    perf_score = EXCLUDED.perf_score,
-    percentile = EXCLUDED.percentile,
-    board_score = EXCLUDED.board_score,
     remark = EXCLUDED.remark,
+    items = EXCLUDED.items,
     updated_at = NOW()
 RETURNING *;
 

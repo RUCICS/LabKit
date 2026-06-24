@@ -48,10 +48,7 @@ function base(): string {
 
 const missingColumns = computed(() => {
   if (!preview.value) return [] as string[];
-  const missing: string[] = [];
-  if (!preview.value.hasStudentId) missing.push('student_id');
-  if (!preview.value.hasTotal) missing.push('total');
-  return missing;
+  return preview.value.hasStudentId ? [] : ['student_id'];
 });
 
 const canImport = computed(
@@ -298,7 +295,7 @@ function onClose() {
                 <span class="drop__icon" aria-hidden="true">⬆</span>
                 <span class="drop__text">
                   <strong>{{ file ? file.name : '拖入 CSV 或点击选择文件' }}</strong>
-                  <span class="drop__sub">按列名匹配,需包含 student_id 与 total</span>
+                  <span class="drop__sub">按列名匹配,需包含 student_id 列</span>
                 </span>
               </label>
 
@@ -310,7 +307,7 @@ function onClose() {
                     v-for="col in preview.columns"
                     :key="col"
                     class="chip"
-                    :class="{ 'chip--key': col.toLowerCase() === 'student_id' || col.toLowerCase() === 'total' }"
+                    :class="{ 'chip--key': col.toLowerCase() === 'student_id' }"
                   >{{ col }}</span>
                 </div>
 
@@ -388,13 +385,14 @@ function onClose() {
             <details class="help">
               <summary class="help__summary">CSV 格式说明</summary>
               <div class="help__body">
-                <p>UTF-8、首行表头、<strong>按列名匹配</strong>(列序随意、多余列忽略)。</p>
+                <p>UTF-8、首行表头、<strong>按列名匹配</strong>(列序随意)。</p>
                 <ul class="help__list">
-                  <li><code>student_id</code>(必需)— 学号</li>
-                  <li><code>total</code>(必需)— 总评</li>
-                  <li><code>track</code> / <code>ratio</code> / <code>perf_score</code> / <code>percentile</code> / <code>board_score</code> / <code>remark</code>(选填)</li>
+                  <li><code>student_id</code>(必需)— 学号,定位学生</li>
+                  <li><code>total</code> / <code>总评</code>(可选)— 作为头条成绩显示</li>
+                  <li><code>remark</code> / <code>备注</code>(可选)— 备注</li>
+                  <li><strong>其余任意列</strong> — 原样展示给学生,<strong>列名即标签</strong>(可用中文,如「性能分(85%)」)</li>
                 </ul>
-                <p class="help__note">选填数值列留空 = 不显示;某行数值无法解析会导致整批导入失败并提示行号。</p>
+                <p class="help__note">单元格留空则该项不显示给该学生。平台不理解各 Lab 的算分口径,完全由 CSV 决定展示。</p>
                 <button type="button" class="button button--secondary" @click="downloadTemplate">下载模板</button>
               </div>
             </details>

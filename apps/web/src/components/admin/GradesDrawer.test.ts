@@ -98,16 +98,30 @@ describe('GradesDrawer', () => {
     view.unmount();
   });
 
-  it('blocks import when a required column is missing', async () => {
+  it('blocks import when student_id is missing', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(statusPayload())));
     const view = await mountDrawer();
 
-    selectFile('student_id,track\n2026001,throughput\n');
+    selectFile('name,total\nAda,90\n');
     await settle();
 
     expect(document.querySelector('[data-testid="grades-preview"]')?.textContent).toContain('缺少必需列');
+    expect(document.querySelector('[data-testid="grades-preview"]')?.textContent).toContain('student_id');
     const importBtn = document.querySelector('[data-testid="grades-import"]') as HTMLButtonElement;
     expect(importBtn.disabled).toBe(true);
+
+    view.unmount();
+  });
+
+  it('allows import without a total column (free-form breakdown only)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(statusPayload())));
+    const view = await mountDrawer();
+
+    selectFile('student_id,赛道\n2026001,throughput\n');
+    await settle();
+
+    const importBtn = document.querySelector('[data-testid="grades-import"]') as HTMLButtonElement;
+    expect(importBtn.disabled).toBe(false);
 
     view.unmount();
   });

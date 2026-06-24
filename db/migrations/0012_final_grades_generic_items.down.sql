@@ -1,0 +1,14 @@
+BEGIN;
+
+ALTER TABLE final_grades
+    DROP COLUMN IF EXISTS items,
+    ADD COLUMN IF NOT EXISTS track TEXT,
+    ADD COLUMN IF NOT EXISTS ratio REAL,
+    ADD COLUMN IF NOT EXISTS perf_score REAL,
+    ADD COLUMN IF NOT EXISTS percentile REAL,
+    ADD COLUMN IF NOT EXISTS board_score REAL;
+
+ALTER TABLE final_grades
+    ALTER COLUMN total TYPE REAL USING NULLIF(total, '')::real;
+
+COMMIT;

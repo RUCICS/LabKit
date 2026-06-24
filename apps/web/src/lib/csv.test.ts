@@ -29,20 +29,18 @@ describe('parseCsv', () => {
 });
 
 describe('previewGradeCsv', () => {
-  it('reports columns, row count and required-column presence', () => {
+  it('reports columns, row count and student_id presence', () => {
     const preview = previewGradeCsv(
       'student_id,track,total,remark\n2026001,t,90,\n2026002,t,80,ok\n'
     );
     expect(preview.columns).toEqual(['student_id', 'track', 'total', 'remark']);
     expect(preview.dataRowCount).toBe(2);
     expect(preview.hasStudentId).toBe(true);
-    expect(preview.hasTotal).toBe(true);
   });
 
-  it('flags missing required columns and is case-insensitive', () => {
-    const preview = previewGradeCsv('Student_ID,Track\n2026001,t\n');
-    expect(preview.hasStudentId).toBe(true);
-    expect(preview.hasTotal).toBe(false);
+  it('detects student_id case-insensitively', () => {
+    expect(previewGradeCsv('Student_ID,Track\n2026001,t\n').hasStudentId).toBe(true);
+    expect(previewGradeCsv('name,total\nAda,90\n').hasStudentId).toBe(false);
   });
 
   it('ignores blank lines when counting data rows', () => {

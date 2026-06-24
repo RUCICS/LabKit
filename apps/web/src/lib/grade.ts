@@ -4,15 +4,16 @@ import { readAPIError } from './http';
 // publish a final course grade through LabKit.
 export const DEFAULT_GRADE_LAB_ID = 'colab-2026-p2';
 
+export type GradeItem = {
+  label: string;
+  value: string;
+};
+
 export type FinalGrade = {
   lab_id: string;
   student_id: string;
-  total: number;
-  track?: string;
-  ratio?: number;
-  perf_score?: number;
-  percentile?: number;
-  board_score?: number;
+  total?: string;
+  items: GradeItem[];
   remark?: string;
   published_at?: string;
   updated_at: string;

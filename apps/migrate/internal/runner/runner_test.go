@@ -39,7 +39,7 @@ func TestUpAppliesAllMigrationsOnCleanDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Version() error = %v", err)
 	}
-	if got, want := version, uint(11); got != want {
+	if got, want := version, uint(12); got != want {
 		t.Fatalf("version = %d, want %d", got, want)
 	}
 	if dirty {

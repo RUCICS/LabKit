@@ -29,24 +29,8 @@ const state = ref<ViewState>('loading');
 const grade = ref<FinalGrade | null>(null);
 const errorMessage = ref('');
 
-const breakdown = computed(() => {
-  const g = grade.value;
-  if (!g) return [];
-  return [
-    { label: '赛道', value: g.track && g.track.trim() ? g.track : '—' },
-    { label: '赛道倍率 r', value: formatNumber(g.ratio) },
-    { label: '性能分(85%)', value: formatNumber(g.perf_score) },
-    { label: '赛道内百分位 p', value: formatNumber(g.percentile) },
-    { label: '打榜分(15%)', value: formatNumber(g.board_score) }
-  ];
-});
-
-function formatNumber(value: number | undefined, digits = 2) {
-  if (value === undefined || value === null || Number.isNaN(Number(value))) {
-    return '—';
-  }
-  return Number(value).toFixed(digits);
-}
+const breakdown = computed(() => grade.value?.items ?? []);
+const hasTotal = computed(() => Boolean(grade.value?.total && grade.value.total.trim()));
 
 function formatUpdatedAt(value: string | undefined) {
   if (!value) return '';
@@ -97,7 +81,7 @@ watch(labId, () => {
     <PageTitleBlock
       title="课程成绩"
       eyebrow="Final grade"
-      :lede="`Lab ${labId} · 总评由助教在外部计算后导入，此处只读展示。`"
+      :lede="`Lab ${labId} · 成绩由助教导入，此处仅供查询。`"
     />
 
     <section v-if="state === 'loading'" class="grade-view__panel">
@@ -124,20 +108,23 @@ watch(labId, () => {
     </section>
 
     <template v-else-if="state === 'ok' && grade">
-      <section class="grade-view__panel grade-view__total">
-        <SectionHeader title="总评" subtitle="Total score" />
-        <p class="grade-view__total-value" data-testid="grade-total">{{ formatNumber(grade.total) }}</p>
-        <p class="grade-view__formula">总评 = 0.85 × 性能分 + 0.15 × 打榜分</p>
+      <section v-if="hasTotal" class="grade-view__panel grade-view__total">
+        <SectionHeader title="成绩" subtitle="Total" />
+        <p class="grade-view__total-value" data-testid="grade-total">{{ grade.total }}</p>
       </section>
 
-      <section class="grade-view__panel">
+      <section v-if="breakdown.length" class="grade-view__panel">
         <SectionHeader title="分项" subtitle="Breakdown" />
         <dl class="grade-view__grid">
-          <div v-for="item in breakdown" :key="item.label" class="grade-view__cell">
+          <div v-for="(item, i) in breakdown" :key="`${item.label}-${i}`" class="grade-view__cell">
             <dt>{{ item.label }}</dt>
             <dd>{{ item.value }}</dd>
           </div>
         </dl>
+      </section>
+
+      <section v-if="!hasTotal && !breakdown.length" class="grade-view__panel">
+        <p class="grade-view__status">暂无成绩明细。</p>
       </section>
 
       <section v-if="grade.remark && grade.remark.trim()" class="grade-view__panel">

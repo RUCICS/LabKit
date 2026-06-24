@@ -3,10 +3,10 @@ package grade
 import (
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 	"time"
 
@@ -19,14 +19,24 @@ import (
 var (
 	// ErrGradeNotFound is returned when no published grade exists for the lookup.
 	ErrGradeNotFound = errors.New("final grade not found")
-	// ErrInvalidCSV signals a malformed grades CSV (missing required columns,
-	// unparseable numbers, etc).
+	// ErrInvalidCSV signals a malformed grades CSV (no student_id column, etc).
 	ErrInvalidCSV = errors.New("invalid grades csv")
 	// ErrInvalidLab signals a blank lab id.
 	ErrInvalidLab = errors.New("invalid lab id")
 )
 
-// Service reads and imports externally-computed final course grades.
+// The platform recognizes only a student key, an optional headline score, and
+// an optional note. Everything else is a free-form breakdown column whose
+// header becomes the student-facing label. The aliases let a TA name the
+// headline / note column in English or Chinese; they carry no lab-specific
+// grading meaning.
+var (
+	totalAliases  = map[string]bool{"total": true, "score": true, "grade": true, "总评": true, "总分": true, "成绩": true}
+	remarkAliases = map[string]bool{"remark": true, "note": true, "comment": true, "备注": true, "说明": true}
+)
+
+// Service reads and imports externally-computed final course grades. It stores
+// and displays grades without understanding any lab's grading scheme.
 type Service struct {
 	repo Repository
 }
@@ -36,19 +46,21 @@ func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 
+// GradeItem is one label/value pair of the free-form breakdown.
+type GradeItem struct {
+	Label string `json:"label"`
+	Value string `json:"value"`
+}
+
 // Grade is the student-facing view of a final course grade.
 type Grade struct {
-	LabID       string     `json:"lab_id"`
-	StudentID   string     `json:"student_id"`
-	Total       float64    `json:"total"`
-	Track       string     `json:"track,omitempty"`
-	Ratio       *float64   `json:"ratio,omitempty"`
-	PerfScore   *float64   `json:"perf_score,omitempty"`
-	Percentile  *float64   `json:"percentile,omitempty"`
-	BoardScore  *float64   `json:"board_score,omitempty"`
-	Remark      string     `json:"remark,omitempty"`
-	PublishedAt *time.Time `json:"published_at,omitempty"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	LabID       string      `json:"lab_id"`
+	StudentID   string      `json:"student_id"`
+	Total       string      `json:"total,omitempty"`
+	Items       []GradeItem `json:"items"`
+	Remark      string      `json:"remark,omitempty"`
+	PublishedAt *time.Time  `json:"published_at,omitempty"`
+	UpdatedAt   time.Time   `json:"updated_at"`
 }
 
 // ImportGradesResult reports how many rows were upserted.
@@ -95,12 +107,28 @@ func (s *Service) GetGrade(ctx context.Context, labID, studentID string) (Grade,
 		}
 		return Grade{}, err
 	}
-	return gradeFromRow(row), nil
+	return gradeFromRow(row)
+}
+
+type columnRole int
+
+const (
+	roleIgnore columnRole = iota
+	roleStudentID
+	roleTotal
+	roleRemark
+	roleItem
+)
+
+type columnPlan struct {
+	role  columnRole
+	label string
 }
 
 // ImportGrades parses a TA-produced CSV and upserts each row into final_grades
-// (left unpublished). Columns are matched by header name, so order is flexible
-// and unknown columns are ignored. Required: student_id, total.
+// (left unpublished). Columns are matched by header name: student_id (required)
+// is the key, total/remark (optional) are the headline score and note, and any
+// other column becomes a free-form breakdown item labelled by its header.
 func (s *Service) ImportGrades(ctx context.Context, labID string, r io.Reader) (ImportGradesResult, error) {
 	if s == nil || s.repo == nil {
 		return ImportGradesResult{}, fmt.Errorf("grade service unavailable")
@@ -121,16 +149,12 @@ func (s *Service) ImportGrades(ctx context.Context, labID string, r io.Reader) (
 		}
 		return ImportGradesResult{}, fmt.Errorf("%w: %v", ErrInvalidCSV, err)
 	}
-	index := headerIndex(header)
-	if _, ok := index["student_id"]; !ok {
+	plan, studentIDIdx := planColumns(header)
+	if studentIDIdx < 0 {
 		return ImportGradesResult{}, fmt.Errorf("%w: missing student_id column", ErrInvalidCSV)
-	}
-	if _, ok := index["total"]; !ok {
-		return ImportGradesResult{}, fmt.Errorf("%w: missing total column", ErrInvalidCSV)
 	}
 
 	imported := 0
-	rowNum := 1 // header consumed
 	for {
 		record, err := reader.Read()
 		if err != nil {
@@ -139,18 +163,17 @@ func (s *Service) ImportGrades(ctx context.Context, labID string, r io.Reader) (
 			}
 			return ImportGradesResult{}, fmt.Errorf("%w: %v", ErrInvalidCSV, err)
 		}
-		rowNum++
 		if isBlankRecord(record) {
 			continue
 		}
-		params, err := parseGradeRecord(labID, index, record)
+		params, ok, err := buildGradeParams(labID, plan, studentIDIdx, record)
 		if err != nil {
-			return ImportGradesResult{}, fmt.Errorf("%w: row %d: %v", ErrInvalidCSV, rowNum, err)
+			return ImportGradesResult{}, err
 		}
-		if params == nil {
+		if !ok {
 			continue // blank student id → skip
 		}
-		if _, err := s.repo.UpsertFinalGrade(ctx, *params); err != nil {
+		if _, err := s.repo.UpsertFinalGrade(ctx, params); err != nil {
 			return ImportGradesResult{}, err
 		}
 		imported++
@@ -216,73 +239,76 @@ func (s *Service) GradeStatus(ctx context.Context, labID string) (GradeStatusRes
 	return result, nil
 }
 
-func headerIndex(header []string) map[string]int {
-	index := make(map[string]int, len(header))
-	for i, name := range header {
-		key := strings.ToLower(strings.TrimSpace(name))
-		// Strip a UTF-8 BOM that spreadsheet exports often prepend.
-		key = strings.TrimPrefix(key, "\ufeff")
-		if key == "" {
-			continue
-		}
-		if _, exists := index[key]; !exists {
-			index[key] = i
+// planColumns classifies each header column. Returns the per-column plan and the
+// student_id column index (-1 if absent). The first matching column wins for
+// student_id / total / remark; later matches fall through to free-form items.
+func planColumns(header []string) ([]columnPlan, int) {
+	plan := make([]columnPlan, len(header))
+	studentIDIdx := -1
+	totalTaken := false
+	remarkTaken := false
+	for i, raw := range header {
+		label := strings.TrimPrefix(strings.TrimSpace(raw), "\ufeff")
+		key := strings.ToLower(label)
+		switch {
+		case key == "":
+			plan[i] = columnPlan{role: roleIgnore}
+		case key == "student_id" && studentIDIdx < 0:
+			studentIDIdx = i
+			plan[i] = columnPlan{role: roleStudentID, label: label}
+		case !totalTaken && totalAliases[key]:
+			totalTaken = true
+			plan[i] = columnPlan{role: roleTotal, label: label}
+		case !remarkTaken && remarkAliases[key]:
+			remarkTaken = true
+			plan[i] = columnPlan{role: roleRemark, label: label}
+		default:
+			plan[i] = columnPlan{role: roleItem, label: label}
 		}
 	}
-	return index
+	return plan, studentIDIdx
 }
 
-func parseGradeRecord(labID string, index map[string]int, record []string) (*sqlc.UpsertFinalGradeParams, error) {
-	get := func(col string) string {
-		i, ok := index[col]
-		if !ok || i >= len(record) {
+func buildGradeParams(labID string, plan []columnPlan, studentIDIdx int, record []string) (sqlc.UpsertFinalGradeParams, bool, error) {
+	cell := func(i int) string {
+		if i < 0 || i >= len(record) {
 			return ""
 		}
 		return strings.TrimSpace(record[i])
 	}
 
-	studentID := get("student_id")
+	studentID := cell(studentIDIdx)
 	if studentID == "" {
-		return nil, nil
+		return sqlc.UpsertFinalGradeParams{}, false, nil
 	}
 
-	totalText := get("total")
-	if totalText == "" {
-		return nil, errors.New("missing total")
-	}
-	total, err := strconv.ParseFloat(totalText, 32)
-	if err != nil {
-		return nil, fmt.Errorf("invalid total %q", totalText)
-	}
-
-	ratio, err := optionalFloat4(get("ratio"))
-	if err != nil {
-		return nil, fmt.Errorf("invalid ratio: %w", err)
-	}
-	perfScore, err := optionalFloat4(get("perf_score"))
-	if err != nil {
-		return nil, fmt.Errorf("invalid perf_score: %w", err)
-	}
-	percentile, err := optionalFloat4(get("percentile"))
-	if err != nil {
-		return nil, fmt.Errorf("invalid percentile: %w", err)
-	}
-	boardScore, err := optionalFloat4(get("board_score"))
-	if err != nil {
-		return nil, fmt.Errorf("invalid board_score: %w", err)
+	var total, remark string
+	items := make([]GradeItem, 0, len(plan))
+	for i, p := range plan {
+		value := cell(i)
+		switch p.role {
+		case roleTotal:
+			total = value
+		case roleRemark:
+			remark = value
+		case roleItem:
+			if value != "" {
+				items = append(items, GradeItem{Label: p.label, Value: value})
+			}
+		}
 	}
 
-	return &sqlc.UpsertFinalGradeParams{
-		LabID:      labID,
-		StudentID:  studentID,
-		Total:      float32(total),
-		Track:      optionalText(get("track")),
-		Ratio:      ratio,
-		PerfScore:  perfScore,
-		Percentile: percentile,
-		BoardScore: boardScore,
-		Remark:     optionalText(get("remark")),
-	}, nil
+	itemsJSON, err := json.Marshal(items)
+	if err != nil {
+		return sqlc.UpsertFinalGradeParams{}, false, err
+	}
+	return sqlc.UpsertFinalGradeParams{
+		LabID:     labID,
+		StudentID: studentID,
+		Total:     optionalText(total),
+		Remark:    optionalText(remark),
+		Items:     itemsJSON,
+	}, true, nil
 }
 
 func optionalText(value string) pgtype.Text {
@@ -290,17 +316,6 @@ func optionalText(value string) pgtype.Text {
 		return pgtype.Text{}
 	}
 	return pgtype.Text{String: value, Valid: true}
-}
-
-func optionalFloat4(value string) (pgtype.Float4, error) {
-	if value == "" {
-		return pgtype.Float4{}, nil
-	}
-	f, err := strconv.ParseFloat(value, 32)
-	if err != nil {
-		return pgtype.Float4{}, fmt.Errorf("%q", value)
-	}
-	return pgtype.Float4{Float32: float32(f), Valid: true}, nil
 }
 
 func isBlankRecord(record []string) bool {
@@ -312,21 +327,25 @@ func isBlankRecord(record []string) bool {
 	return true
 }
 
-func gradeFromRow(row sqlc.FinalGrades) Grade {
+func gradeFromRow(row sqlc.FinalGrades) (Grade, error) {
 	g := Grade{
-		LabID:      row.LabID,
-		StudentID:  row.StudentID,
-		Total:      float64(row.Total),
-		Ratio:      float4ToPtr(row.Ratio),
-		PerfScore:  float4ToPtr(row.PerfScore),
-		Percentile: float4ToPtr(row.Percentile),
-		BoardScore: float4ToPtr(row.BoardScore),
+		LabID:     row.LabID,
+		StudentID: row.StudentID,
+		Items:     []GradeItem{},
 	}
-	if row.Track.Valid {
-		g.Track = strings.TrimSpace(row.Track.String)
+	if row.Total.Valid {
+		g.Total = strings.TrimSpace(row.Total.String)
 	}
 	if row.Remark.Valid {
 		g.Remark = strings.TrimSpace(row.Remark.String)
+	}
+	if len(row.Items) > 0 {
+		if err := json.Unmarshal(row.Items, &g.Items); err != nil {
+			return Grade{}, err
+		}
+		if g.Items == nil {
+			g.Items = []GradeItem{}
+		}
 	}
 	if row.PublishedAt.Valid {
 		published := row.PublishedAt.Time.UTC()
@@ -335,13 +354,5 @@ func gradeFromRow(row sqlc.FinalGrades) Grade {
 	if row.UpdatedAt.Valid {
 		g.UpdatedAt = row.UpdatedAt.Time.UTC()
 	}
-	return g
-}
-
-func float4ToPtr(v pgtype.Float4) *float64 {
-	if !v.Valid {
-		return nil
-	}
-	f := float64(v.Float32)
-	return &f
+	return g, nil
 }

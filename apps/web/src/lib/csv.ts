@@ -68,11 +68,11 @@ export type GradeCsvPreview = {
   rows: string[][];
   dataRowCount: number;
   hasStudentId: boolean;
-  hasTotal: boolean;
 };
 
-// Required columns the importer needs (mirrors apps/api grade service).
-export const REQUIRED_GRADE_COLUMNS = ['student_id', 'total'] as const;
+// The only column the importer requires (mirrors apps/api grade service); every
+// other column is optional and shown to students as a free-form breakdown.
+export const REQUIRED_GRADE_COLUMNS = ['student_id'] as const;
 
 export function previewGradeCsv(text: string, maxRows = 5): GradeCsvPreview {
   const all = parseCsv(text).filter((cells) => cells.some((cell) => cell.trim() !== ''));
@@ -84,7 +84,6 @@ export function previewGradeCsv(text: string, maxRows = 5): GradeCsvPreview {
     columns,
     rows: dataRows.slice(0, maxRows),
     dataRowCount: dataRows.length,
-    hasStudentId: lower.includes('student_id'),
-    hasTotal: lower.includes('total')
+    hasStudentId: lower.includes('student_id')
   };
 }

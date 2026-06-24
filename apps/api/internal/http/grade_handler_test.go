@@ -60,7 +60,12 @@ func (f *fakeGradeService) GradeStatus(_ context.Context, labID string) (gradesv
 }
 
 func TestGradeRouteReturnsGradeForBrowserSession(t *testing.T) {
-	svc := &fakeGradeService{grade: gradesvc.Grade{LabID: "colab-2026-p2", StudentID: "2026001", Total: 86.5}}
+	svc := &fakeGradeService{grade: gradesvc.Grade{
+		LabID:     "colab-2026-p2",
+		StudentID: "2026001",
+		Total:     "86.5",
+		Items:     []gradesvc.GradeItem{{Label: "赛道", Value: "throughput"}},
+	}}
 	router := NewRouter(WithGradeService(svc))
 
 	token, err := issueWebBrowserSession(7, "2026001")
@@ -86,8 +91,11 @@ func TestGradeRouteReturnsGradeForBrowserSession(t *testing.T) {
 	if err := json.Unmarshal(rr.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("unmarshal grade: %v", err)
 	}
-	if payload.Total != 86.5 {
-		t.Fatalf("total = %v, want 86.5", payload.Total)
+	if payload.Total != "86.5" {
+		t.Fatalf("total = %q, want 86.5", payload.Total)
+	}
+	if len(payload.Items) != 1 || payload.Items[0].Label != "赛道" {
+		t.Fatalf("items = %+v, want [赛道]", payload.Items)
 	}
 }
 
