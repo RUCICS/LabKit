@@ -11,6 +11,8 @@ import (
 type DeviceVerifyHandler struct {
 	Service              *authsvc.Service
 	BrowserSessionSecure bool
+	// WebLogin handles the browser-only login path that shares this callback.
+	WebLogin *WebLoginHandler
 }
 
 func (h *DeviceVerifyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -20,7 +22,16 @@ func (h *DeviceVerifyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	}
 
 	query := r.URL.Query()
-	if strings.TrimSpace(query.Get("code")) != "" || strings.TrimSpace(query.Get("state")) != "" {
+	state := strings.TrimSpace(query.Get("state"))
+	code := strings.TrimSpace(query.Get("code"))
+	if code != "" || state != "" {
+		// Web login and device flow share this redirect_uri. A matching
+		// labkit_oauth_state cookie means the browser started a web login;
+		// otherwise fall through to the device flow (unchanged).
+		if h.WebLogin != nil && hasMatchingOAuthStateCookie(r, state) {
+			h.WebLogin.handleCallback(w, r, state, code)
+			return
+		}
 		callback := &OAuthCallbackHandler{Service: h.Service, BrowserSessionSecure: h.BrowserSessionSecure}
 		callback.ServeHTTP(w, r)
 		return

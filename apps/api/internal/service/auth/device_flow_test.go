@@ -592,6 +592,16 @@ func (r *fakeRepository) CompleteDeviceAuthRequest(_ context.Context, arg sqlc.C
 	}, nil
 }
 
+func (r *fakeRepository) UpsertUser(_ context.Context, studentID string) (sqlc.UpsertUserRow, error) {
+	user, ok := r.usersByStudentID[studentID]
+	if !ok {
+		user = sqlc.Users{ID: r.nextUserID, StudentID: studentID}
+		r.nextUserID++
+		r.usersByStudentID[studentID] = user
+	}
+	return sqlc.UpsertUserRow{ID: user.ID, StudentID: user.StudentID}, nil
+}
+
 func (r *fakeRepository) GetUserKeyByPublicKey(_ context.Context, publicKey string) (sqlc.UserKeys, error) {
 	key, ok := r.keysByPublicKey[publicKey]
 	if !ok {

@@ -515,6 +515,19 @@ func (r *routerAuthRepo) GetUserByID(_ context.Context, id int64) (sqlc.Users, e
 	return user, nil
 }
 
+func (r *routerAuthRepo) UpsertUser(_ context.Context, studentID string) (sqlc.UpsertUserRow, error) {
+	for _, user := range r.usersByID {
+		if user.StudentID == studentID {
+			return sqlc.UpsertUserRow{ID: user.ID, StudentID: user.StudentID}, nil
+		}
+	}
+	id := r.nextID
+	r.nextID++
+	user := sqlc.Users{ID: id, StudentID: studentID}
+	r.usersByID[id] = user
+	return sqlc.UpsertUserRow{ID: id, StudentID: studentID}, nil
+}
+
 type noopOAuthClient struct{}
 
 func (noopOAuthClient) ExchangeCode(context.Context, string) (string, error) {

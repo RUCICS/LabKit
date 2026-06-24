@@ -16,6 +16,7 @@ import (
 	adminsvc "labkit.local/apps/api/internal/service/admin"
 	authsvc "labkit.local/apps/api/internal/service/auth"
 	authproviders "labkit.local/apps/api/internal/service/auth/providers"
+	gradesvc "labkit.local/apps/api/internal/service/grade"
 	labsvc "labkit.local/apps/api/internal/service/labs"
 	boardsvc "labkit.local/apps/api/internal/service/leaderboard"
 	personalsvc "labkit.local/apps/api/internal/service/personal"
@@ -82,6 +83,7 @@ func main() {
 			httpapi.WithAuthService(authsvc.NewServiceWithProvider(authsvc.NewRepository(pool), authProvider, oauthConfig)),
 			httpapi.WithLabsService(labsvc.NewService(db.New(pool))),
 			httpapi.WithAdminService(adminsvc.NewService(adminsvc.NewRepository(pool))),
+			httpapi.WithGradeService(gradesvc.NewService(gradesvc.NewRepository(pool))),
 			httpapi.WithLeaderboardService(leaderboardService),
 			httpapi.WithPersonalService(personalService),
 			httpapi.WithWebSessionService(websession.NewPersistentService(websession.NewRepository(pool))),

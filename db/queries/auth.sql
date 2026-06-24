@@ -3,6 +3,12 @@ INSERT INTO users (student_id)
 VALUES ($1)
 RETURNING *;
 
+-- name: UpsertUser :one
+INSERT INTO users (student_id)
+VALUES ($1)
+ON CONFLICT (student_id) DO UPDATE SET student_id = EXCLUDED.student_id
+RETURNING id, student_id;
+
 -- name: GetUserByID :one
 SELECT *
 FROM users

@@ -4,8 +4,10 @@ import AdminLoginView from './views/AdminLoginView.vue';
 import AdminQueueView from './views/AdminQueueView.vue';
 import AuthConfirmView from './views/AuthConfirmView.vue';
 import DeviceAuthView from './views/DeviceAuthView.vue';
+import GradeView from './views/GradeView.vue';
 import HistoryView from './views/HistoryView.vue';
 import LabListView from './views/LabListView.vue';
+import LoginView from './views/LoginView.vue';
 import ProfileView from './views/ProfileView.vue';
 import LeaderboardView from './views/LeaderboardView.vue';
 import { readAdminToken, sessionToken } from './lib/admin';
@@ -44,6 +46,24 @@ export function createAppRouter(history = createWebHistory()) {
         path: '/auth/confirm',
         name: 'auth-confirm',
         component: AuthConfirmView
+      },
+      {
+        path: '/login',
+        name: 'login',
+        component: LoginView
+      },
+      {
+        path: '/grade',
+        name: 'grade',
+        component: GradeView
+      },
+      {
+        path: '/labs/:labID/grade',
+        name: 'lab-grade',
+        component: GradeView,
+        props: (route) => ({
+          labId: String(route.params.labID)
+        })
       },
       {
         path: '/profile',

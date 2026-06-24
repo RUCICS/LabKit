@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"strings"
 
-	v2http "labkit.local/apps/api/internal/http/v2"
 	"labkit.local/apps/api/internal/http/middleware"
+	v2http "labkit.local/apps/api/internal/http/v2"
 	authsvc "labkit.local/apps/api/internal/service/auth"
 	labsvc "labkit.local/apps/api/internal/service/labs"
 	websession "labkit.local/apps/api/internal/service/websession"
@@ -26,6 +26,7 @@ type routerConfig struct {
 	submissionsService SubmissionsService
 	personalService    PersonalService
 	adminService       AdminService
+	gradeService       GradeService
 	adminToken         string
 	devMode            bool
 	webSessionService  *websession.Service
@@ -73,6 +74,12 @@ func WithAdminService(service AdminService) RouterOption {
 	}
 }
 
+func WithGradeService(service GradeService) RouterOption {
+	return func(cfg *routerConfig) {
+		cfg.gradeService = service
+	}
+}
+
 func WithWebSessionService(service *websession.Service) RouterOption {
 	return func(cfg *routerConfig) {
 		cfg.webSessionService = service
@@ -95,7 +102,8 @@ func NewRouter(options ...RouterOption) *Router {
 
 	mux := http.NewServeMux()
 	authHandler := &AuthHandler{Service: cfg.authService}
-	verifyHandler := &DeviceVerifyHandler{Service: cfg.authService, BrowserSessionSecure: !cfg.devMode}
+	webLoginHandler := &WebLoginHandler{Service: cfg.authService, BrowserSessionSecure: !cfg.devMode}
+	verifyHandler := &DeviceVerifyHandler{Service: cfg.authService, BrowserSessionSecure: !cfg.devMode, WebLogin: webLoginHandler}
 	devDeviceHandler := &DevDeviceHandler{Service: cfg.authService}
 	labsHandler := &LabsHandler{Service: cfg.labsService}
 	leaderboardHandler := &LeaderboardHandler{Service: cfg.leaderboardService, Personal: cfg.personalService}
@@ -104,6 +112,7 @@ func NewRouter(options ...RouterOption) *Router {
 	profileHandler := &ProfileHandler{Service: cfg.personalService}
 	keysHandler := &KeysHandler{Service: cfg.personalService}
 	adminHandler := &AdminHandler{Service: cfg.adminService}
+	gradeHandler := &GradeHandler{Service: cfg.gradeService, Personal: cfg.personalService}
 	webSessionService := cfg.webSessionService
 	if webSessionService == nil {
 		webSessionService = websession.NewService()
@@ -117,15 +126,15 @@ func NewRouter(options ...RouterOption) *Router {
 
 	mux.Handle("GET /healthz", &HealthHandler{})
 
-	registerAuthRoutes(mux, authHandler, verifyHandler, webSessionHandler)
+	registerAuthRoutes(mux, authHandler, verifyHandler, webSessionHandler, webLoginHandler)
 	if cfg.devMode {
 		registerDevRoutes(mux, devDeviceHandler)
 	}
 
 	// v1 API: existing production surface.
-	registerV1APIRoutes(mux, "/api", labsHandler, leaderboardHandler, submissionsHandler, historyHandler, profileHandler, keysHandler, adminHandler, adminGuard)
+	registerV1APIRoutes(mux, "/api", labsHandler, leaderboardHandler, submissionsHandler, historyHandler, profileHandler, keysHandler, adminHandler, gradeHandler, adminGuard)
 	// Versioned alias for v1, so clients can opt into explicit versioning.
-	registerV1APIRoutes(mux, "/api/v1", labsHandler, leaderboardHandler, submissionsHandler, historyHandler, profileHandler, keysHandler, adminHandler, adminGuard)
+	registerV1APIRoutes(mux, "/api/v1", labsHandler, leaderboardHandler, submissionsHandler, historyHandler, profileHandler, keysHandler, adminHandler, gradeHandler, adminGuard)
 
 	// v2 API: new stable JSON contract (lowercase keys), implemented incrementally.
 	registerV2Routes(mux, cfg.labsService)
@@ -169,10 +178,12 @@ func registerAuthRoutes(
 	authHandler *AuthHandler,
 	verifyHandler *DeviceVerifyHandler,
 	webSessionHandler *WebSessionHandler,
+	webLoginHandler *WebLoginHandler,
 ) {
 	mux.HandleFunc("POST /api/device/authorize", authHandler.CreateDeviceAuthorizationRequest)
 	mux.HandleFunc("POST /api/device/poll", authHandler.PollDeviceAuthorizationRequest)
 	mux.Handle("GET /api/device/verify", verifyHandler)
+	mux.HandleFunc("GET /auth/login", webLoginHandler.Start)
 	mux.HandleFunc("POST /api/web/session-ticket", webSessionHandler.CreateSessionTicket)
 	mux.HandleFunc("GET /auth/session", webSessionHandler.ServeSessionShell)
 	mux.HandleFunc("POST /auth/session/exchange", webSessionHandler.ExchangeSessionTicket)
@@ -192,11 +203,13 @@ func registerV1APIRoutes(
 	profileHandler *ProfileHandler,
 	keysHandler *KeysHandler,
 	adminHandler *AdminHandler,
+	gradeHandler *GradeHandler,
 	adminGuard func(http.Handler) http.Handler,
 ) {
 	mux.HandleFunc("GET "+apiPrefix+"/labs", labsHandler.ListLabs)
 	mux.HandleFunc("GET "+apiPrefix+"/labs/{labID}", labsHandler.GetLab)
 	mux.HandleFunc("GET "+apiPrefix+"/labs/{labID}/board", leaderboardHandler.GetBoard)
+	mux.HandleFunc("GET "+apiPrefix+"/labs/{labID}/grade", gradeHandler.GetMyGrade)
 	mux.HandleFunc("GET "+apiPrefix+"/labs/{labID}/submit/precheck", submissionsHandler.GetSubmitPrecheck)
 	mux.HandleFunc("POST "+apiPrefix+"/labs/{labID}/submit", submissionsHandler.CreateSubmission)
 	mux.HandleFunc("POST "+apiPrefix+"/labs/{labID}/submissions", submissionsHandler.CreateSubmission)
@@ -212,6 +225,8 @@ func registerV1APIRoutes(
 	mux.Handle("PUT "+apiPrefix+"/admin/labs/{labID}", adminGuard(http.HandlerFunc(labsHandler.UpdateLab)))
 	mux.Handle("GET "+apiPrefix+"/admin/labs/{labID}", adminGuard(http.HandlerFunc(adminHandler.GetLabDetail)))
 	mux.Handle("GET "+apiPrefix+"/admin/labs/{labID}/grades", adminGuard(http.HandlerFunc(adminHandler.ExportGrades)))
+	mux.Handle("POST "+apiPrefix+"/admin/labs/{labID}/grades/import", adminGuard(http.HandlerFunc(gradeHandler.ImportGrades)))
+	mux.Handle("POST "+apiPrefix+"/admin/labs/{labID}/grades/publish", adminGuard(http.HandlerFunc(gradeHandler.PublishGrades)))
 	mux.Handle("POST "+apiPrefix+"/admin/labs/{labID}/reeval", adminGuard(http.HandlerFunc(adminHandler.Reevaluate)))
 	mux.Handle("GET "+apiPrefix+"/admin/labs/{labID}/queue", adminGuard(http.HandlerFunc(adminHandler.GetQueueStatus)))
 	mux.Handle("POST "+apiPrefix+"/admin/labs/{labID}/quota/reset", adminGuard(http.HandlerFunc(adminHandler.ResetLabQuota)))

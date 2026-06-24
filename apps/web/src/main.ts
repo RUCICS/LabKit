@@ -76,6 +76,7 @@ const App = defineComponent({
               ]),
               h('nav', { class: 'app-shell__utility', 'aria-label': 'Utility' }, [
                 showAdmin.value ? h(RouterLink, { to: '/admin', class: 'app-shell__utility-link' }, { default: () => 'Admin' }) : null,
+                h(RouterLink, { to: '/grade', class: 'app-shell__utility-link' }, { default: () => 'Grade' }),
                 h(RouterLink, { to: '/profile', class: 'app-shell__utility-link' }, { default: () => 'Profile' }),
               ]),
               statusPhase.value

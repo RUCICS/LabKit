@@ -38,7 +38,7 @@ func TestUpAppliesAllMigrationsOnCleanDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Version() error = %v", err)
 	}
-	if got, want := version, uint(10); got != want {
+	if got, want := version, uint(11); got != want {
 		t.Fatalf("version = %d, want %d", got, want)
 	}
 	if dirty {
@@ -47,6 +47,7 @@ func TestUpAppliesAllMigrationsOnCleanDatabase(t *testing.T) {
 	assertTableExists(t, ctx, env.pool, "labs")
 	assertTableExists(t, ctx, env.pool, "evaluation_jobs")
 	assertTableExists(t, ctx, env.pool, "web_session_tickets")
+	assertTableExists(t, ctx, env.pool, "final_grades")
 }
 
 func TestUpRejectsLegacyDatabaseWithoutVersionTable(t *testing.T) {

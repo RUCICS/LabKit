@@ -42,6 +42,10 @@ func (r *repo) CompleteDeviceAuthRequest(ctx context.Context, arg sqlc.CompleteD
 	return r.store.CompleteDeviceAuthRequest(ctx, arg)
 }
 
+func (r *repo) UpsertUser(ctx context.Context, studentID string) (sqlc.UpsertUserRow, error) {
+	return r.store.UpsertUser(ctx, studentID)
+}
+
 func (r *repo) GetUserKeyByPublicKey(ctx context.Context, publicKey string) (sqlc.UserKeys, error) {
 	var row sqlc.UserKeys
 	err := r.pool.QueryRow(ctx, `

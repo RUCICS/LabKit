@@ -38,6 +38,20 @@ type EvaluationJobs struct {
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
+type FinalGrades struct {
+	LabID       string             `json:"lab_id"`
+	StudentID   string             `json:"student_id"`
+	Total       float32            `json:"total"`
+	Track       pgtype.Text        `json:"track"`
+	Ratio       pgtype.Float4      `json:"ratio"`
+	PerfScore   pgtype.Float4      `json:"perf_score"`
+	Percentile  pgtype.Float4      `json:"percentile"`
+	BoardScore  pgtype.Float4      `json:"board_score"`
+	Remark      pgtype.Text        `json:"remark"`
+	PublishedAt pgtype.Timestamptz `json:"published_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type LabProfiles struct {
 	UserID   int64       `json:"user_id"`
 	LabID    string      `json:"lab_id"`
