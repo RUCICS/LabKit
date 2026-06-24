@@ -4,6 +4,7 @@ import StatusBadge from './components/chrome/StatusBadge.vue';
 import type { LeaderboardLabDetail } from './components/board/types';
 import { readAPIError } from './lib/http';
 import { getLabPhase, getLabSchedule, labPhaseLabel } from './lib/labs';
+import { isAuthenticated, login, refreshSession, sessionLoaded } from './lib/session';
 import { createAppPinia } from './stores';
 import { router } from './router';
 import './styles/main.css';
@@ -26,6 +27,8 @@ const App = defineComponent({
 
     const statusPhase = computed(() => (lab.value ? getLabPhase(getLabSchedule(lab.value.manifest)) : null));
     const showAdmin = computed(() => Boolean(sessionStorage.getItem('labkit_admin_token')));
+
+    void refreshSession();
 
     async function loadLabContext(labId: string) {
       const requestId = ++requestSeq;
@@ -76,8 +79,23 @@ const App = defineComponent({
               ]),
               h('nav', { class: 'app-shell__utility', 'aria-label': 'Utility' }, [
                 showAdmin.value ? h(RouterLink, { to: '/admin', class: 'app-shell__utility-link' }, { default: () => 'Admin' }) : null,
-                h(RouterLink, { to: '/grade', class: 'app-shell__utility-link' }, { default: () => 'Grade' }),
-                h(RouterLink, { to: '/profile', class: 'app-shell__utility-link' }, { default: () => 'Profile' }),
+                isAuthenticated.value
+                  ? [
+                      h(RouterLink, { to: '/grade', class: 'app-shell__utility-link' }, { default: () => 'Grade' }),
+                      h(RouterLink, { to: '/profile', class: 'app-shell__utility-link' }, { default: () => 'Profile' })
+                    ]
+                  : sessionLoaded.value
+                    ? h(
+                        'button',
+                        {
+                          type: 'button',
+                          class: 'app-shell__utility-link app-shell__utility-button',
+                          'data-testid': 'sign-in',
+                          onClick: () => login()
+                        },
+                        'Sign in'
+                      )
+                    : null
               ]),
               statusPhase.value
                 ? h(StatusBadge, {

@@ -35,7 +35,7 @@ func cookieByName(cookies []*http.Cookie, name string) *http.Cookie {
 func TestWebLoginStartSetsStateCookieAndRedirects(t *testing.T) {
 	router := newWebLoginRouter(newRouterAuthRepo())
 
-	req := httptest.NewRequest(http.MethodGet, "/auth/login?next=/grade", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/login?next=/grade", nil)
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 
@@ -75,7 +75,7 @@ func TestWebLoginStartSetsStateCookieAndRedirects(t *testing.T) {
 func TestWebLoginStartRejectsOpenRedirectNext(t *testing.T) {
 	router := newWebLoginRouter(newRouterAuthRepo())
 
-	req := httptest.NewRequest(http.MethodGet, "/auth/login?next=https://evil.example/x", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/auth/login?next=https://evil.example/x", nil)
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 
@@ -93,7 +93,7 @@ func TestWebLoginCallbackIssuesBrowserSessionAndRedirectsToNext(t *testing.T) {
 	router := newWebLoginRouter(repo)
 
 	// 1) start to obtain a matching state + cookies.
-	startReq := httptest.NewRequest(http.MethodGet, "/auth/login?next=/grade", nil)
+	startReq := httptest.NewRequest(http.MethodGet, "/api/auth/login?next=/grade", nil)
 	startRR := httptest.NewRecorder()
 	router.ServeHTTP(startRR, startReq)
 	startCookies := startRR.Result().Cookies()

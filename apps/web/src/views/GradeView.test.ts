@@ -112,8 +112,8 @@ describe('GradeView', () => {
 
     const view = await mountGradeView('/grade');
 
-    expect(document.body.textContent).toContain('需要登录');
-    expect(document.body.textContent).toContain('前往登录');
+    expect(document.body.textContent).toContain('请先登录');
+    expect(document.body.textContent).toContain('登录');
 
     view.unmount();
   });

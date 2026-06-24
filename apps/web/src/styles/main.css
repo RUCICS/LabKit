@@ -204,6 +204,13 @@ a {
   transition: color 150ms ease;
 }
 
+.app-shell__utility-button {
+  appearance: none;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
 .app-shell__utility-link:hover {
   color: var(--text-primary);
 }

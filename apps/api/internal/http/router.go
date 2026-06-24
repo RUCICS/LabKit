@@ -183,7 +183,9 @@ func registerAuthRoutes(
 	mux.HandleFunc("POST /api/device/authorize", authHandler.CreateDeviceAuthorizationRequest)
 	mux.HandleFunc("POST /api/device/poll", authHandler.PollDeviceAuthorizationRequest)
 	mux.Handle("GET /api/device/verify", verifyHandler)
-	mux.HandleFunc("GET /auth/login", webLoginHandler.Start)
+	// Login start lives under /api so it is always proxied to the API (vite,
+	// Caddy, nginx all route /api/* there); /auth/* is otherwise SPA territory.
+	mux.HandleFunc("GET /api/auth/login", webLoginHandler.Start)
 	mux.HandleFunc("POST /api/web/session-ticket", webSessionHandler.CreateSessionTicket)
 	mux.HandleFunc("GET /auth/session", webSessionHandler.ServeSessionShell)
 	mux.HandleFunc("POST /auth/session/exchange", webSessionHandler.ExchangeSessionTicket)

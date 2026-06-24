@@ -13,10 +13,6 @@
     reverse_proxy api:8080
   }
 
-  handle /auth/login* {
-    reverse_proxy api:8080
-  }
-
   handle {
     reverse_proxy web:80
   }

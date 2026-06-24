@@ -18,7 +18,7 @@ const (
 	oauthNextCookieName = "labkit_oauth_next"
 	oauthStateCookieTTL = 10 * time.Minute
 
-	defaultWebLoginNext = "/grade"
+	defaultWebLoginNext = "/"
 )
 
 // WebLoginHandler implements the browser-only 微人大 login path. It shares the

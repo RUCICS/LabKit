@@ -45,13 +45,17 @@ afterEach(() => {
 });
 
 describe('LoginView', () => {
-  it('shows the 微人大 login button when not signed in', async () => {
+  it('shows the sign-in action when not signed in', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ error: { message: 'unauthorized' } }, 401)));
 
     const view = await mountLoginView('/login');
 
-    expect(document.querySelector('[data-testid="login-cas"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="sign-in"]')).not.toBeNull();
+    expect(document.body.textContent).toContain('登录 LabKit');
     expect(document.body.textContent).toContain('微人大登录');
+    // No CLI/key jargon leaks into the product copy.
+    expect(document.body.textContent).not.toContain('CLI');
+    expect(document.body.textContent).not.toContain('密钥');
 
     view.unmount();
   });
@@ -61,8 +65,9 @@ describe('LoginView', () => {
 
     const view = await mountLoginView('/login');
 
-    expect(document.body.textContent).toContain('已登录为 2026001');
-    expect(document.body.textContent).toContain('继续查看成绩');
+    expect(document.body.textContent).toContain('已登录');
+    expect(document.body.textContent).toContain('2026001');
+    expect(document.body.textContent).toContain('继续');
 
     view.unmount();
   });

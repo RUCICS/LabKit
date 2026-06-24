@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
 import { DEFAULT_GRADE_LAB_ID, getMyGrade, type FinalGrade } from '../lib/grade';
+import { login } from '../lib/session';
 import PageTitleBlock from '../components/chrome/PageTitleBlock.vue';
 import SectionHeader from '../components/chrome/SectionHeader.vue';
 
 const props = defineProps<{ labId?: string }>();
 const route = useRoute();
-const router = useRouter();
 
 const labId = computed(() => {
   if (props.labId && props.labId.trim()) {
@@ -80,7 +80,7 @@ async function load() {
 }
 
 function goLogin() {
-  void router.push({ path: '/login', query: { next: route.fullPath } });
+  login(route.fullPath);
 }
 
 onMounted(() => {
@@ -105,9 +105,9 @@ watch(labId, () => {
     </section>
 
     <section v-else-if="state === 'unauthorized'" class="grade-view__panel">
-      <SectionHeader title="需要登录" subtitle="Sign in" />
-      <p class="grade-view__status">查看成绩前需要使用微人大登录。</p>
-      <button class="grade-view__button" type="button" @click="goLogin">前往登录</button>
+      <SectionHeader title="请先登录" subtitle="Sign in" />
+      <p class="grade-view__status">登录后即可查看课程成绩。</p>
+      <button class="grade-view__button" type="button" @click="goLogin">登录</button>
     </section>
 
     <section v-else-if="state === 'unpublished'" class="grade-view__panel">

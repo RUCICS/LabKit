@@ -10,11 +10,6 @@ export default defineConfig({
       '/api': {
         target: apiProxyTarget,
         changeOrigin: true
-      },
-      // Browser-only 微人大 login start endpoint lives on the API under /auth.
-      '/auth/login': {
-        target: apiProxyTarget,
-        changeOrigin: true
       }
     }
   },
